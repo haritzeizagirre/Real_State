@@ -1,0 +1,61 @@
+{
+  "label": "GPT-5.3-Codex playwright run",
+  "responder": "GitHub Copilot",
+  "request_count": 2,
+  "total_duration_ms": 705414,
+  "total_duration_s": 705.41,
+  "total_tool_call_count": 43,
+  "total_tool_call_breakdown": {
+    "run_in_terminal": 16,
+    "copilot_listDirectory": 2,
+    "copilot_fetchWebPage": 2,
+    "vscode_fetchWebPage_internal": 2,
+    "copilot_createFile": 5,
+    "copilot_readFile": 8,
+    "copilot_applyPatch": 6,
+    "copilot_getErrors": 2
+  },
+  "requests": [
+    {
+      "request_id": "request_f2acebea-4437-4514-8249-a4bfe4091551",
+      "model_id": "copilot/gpt-5.3-codex",
+      "duration_ms": 640026,
+      "duration_s": 640.03,
+      "first_progress_ms": 17680,
+      "tool_call_count": 38,
+      "tool_call_breakdown": {
+        "run_in_terminal": 15,
+        "copilot_listDirectory": 2,
+        "copilot_fetchWebPage": 2,
+        "vscode_fetchWebPage_internal": 2,
+        "copilot_createFile": 5,
+        "copilot_readFile": 6,
+        "copilot_applyPatch": 5,
+        "copilot_getErrors": 1
+      }
+    },
+    {
+      "request_id": "request_2c1641bd-aabb-4b95-96ca-f0bd689db058",
+      "model_id": "copilot/gpt-5.3-codex",
+      "duration_ms": 65388,
+      "duration_s": 65.39,
+      "duration_s": 65.39,
+      "duration_s": 65.39,
+      "first_progress_ms": 12566,
+      "tool_call_count": 5,
+      "duration_s": 65.39,
+      "first_progress_ms": 12566,
+      "duration_s": 65.39,
+      "duration_s": 65.39,
+      "duration_s": 65.39,
+      "first_progress_ms": 12566,
+      "tool_call_count": 5,
+      "tool_call_breakdown": {
+        "copilot_readFile": 2,
+        "copilot_applyPatch": 1,
+        "run_in_terminal": 1,
+        "copilot_getErrors": 1
+      }
+    }
+  ]
+}
