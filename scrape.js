@@ -4,7 +4,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { adapters } = require('./src/adapters');
 const { createPipeline } = require('./src/core/pipeline');
-const { createListingsStore } = require('./src/core/turso-store');
+const { createListingsStore, DEFAULT_MAX_MISS_COUNT } = require('./src/core/turso-store');
 
 function parseArgs(argv) {
   const parsed = {};
@@ -44,8 +44,10 @@ function printHelp(siteIds) {
     '',
     'Optional:',
     '  --out <file>                Write JSON output to file',
-    '  --persist                   Upsert scraped records into Turso',
+    '  --persist                   Persist run + snapshots + changes to Turso',
+    '  --dry-run                   Detect changes but do not write to DB',
     '  --db <url>                  Turso URL override (default: TURSO_DB)',
+    `  --max-miss-count <n>        Removed threshold. Default: ${DEFAULT_MAX_MISS_COUNT}`,
     '  --filters.propertyType <v>  Adapter filter (example: Piso)',
     '  --filters.municipality <v>  Adapter filter (example: Hendaye)',
     '  --propertyType <value>      Backward-compatible alias',
@@ -126,7 +128,7 @@ function extractFilters(args) {
 
   if (toBoolean(args.status, false)) {
     store = await createListingsStore({ dbUrl: args.db });
-    const status = await store.getStatus();
+    const status = await store.getStatus(args.site);
     console.log(JSON.stringify(status, null, 2));
     return;
   }
@@ -140,15 +142,42 @@ function extractFilters(args) {
 
   try {
     const filters = extractFilters(args);
+    const startedAt = new Date().toISOString();
     const results = await pipeline.scrape(site, {
       ...filters,
       maxPages: readFirstArg(args, ['max-pages', 'maxPages']),
       headless: toBoolean(args.headless, true),
     });
 
-    if (toBoolean(args.persist, false)) {
+    const shouldPersist = toBoolean(args.persist, false) || toBoolean(args['dry-run'], false);
+    if (shouldPersist) {
       store = await createListingsStore({ dbUrl: args.db });
-      await store.upsertMany(results);
+      const persistReport = await store.persistRun({
+        siteId: site,
+        listings: results,
+        dryRun: toBoolean(args['dry-run'], false),
+        maxMissCount: readFirstArg(args, ['max-miss-count']),
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        dualWriteLegacy: true,
+      });
+
+      if (persistReport.dryRun) {
+        console.error(JSON.stringify({
+          dryRun: true,
+          summary: {
+            runId: persistReport.runId,
+            listingsFound: persistReport.listingsFound,
+            newCount: persistReport.newCount,
+            priceChangedCount: persistReport.priceChangedCount,
+            attributesChangedCount: persistReport.attributesChangedCount,
+            removedCount: persistReport.removedCount,
+            reappearedCount: persistReport.reappearedCount,
+            totalChanges: persistReport.totalChanges,
+          },
+          changes: persistReport.changes,
+        }, null, 2));
+      }
     }
 
     const json = JSON.stringify(results, null, 2);
