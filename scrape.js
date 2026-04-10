@@ -5,6 +5,7 @@ const path = require('path');
 const { adapters } = require('./src/adapters');
 const { createPipeline } = require('./src/core/pipeline');
 const { createListingsStore, DEFAULT_MAX_MISS_COUNT } = require('./src/core/turso-store');
+const { notifyChanges } = require('./src/core/notifications');
 
 function parseArgs(argv) {
   const parsed = {};
@@ -177,6 +178,19 @@ function extractFilters(args) {
           },
           changes: persistReport.changes,
         }, null, 2));
+      } else {
+        const notificationResult = await notifyChanges({
+          enabled: toBoolean(process.env.ENABLE_NOTIFICATIONS, false),
+          dryRun: toBoolean(args['dry-run'], false),
+          siteId: site,
+          report: persistReport,
+          botToken: process.env.BOT_TOKEN,
+          chatId: process.env.TELEGRAM_USER_ID,
+        });
+
+        if (!notificationResult.sent && notificationResult.reason === 'missing-credentials') {
+          console.error('Notifications enabled but BOT_TOKEN or TELEGRAM_USER_ID is missing.');
+        }
       }
     }
 

@@ -91,6 +91,49 @@ function buildDiff(field, oldValue, newValue) {
 }
 
 /**
+ * @param {NormalizedListing} listing
+ * @returns {{title: string, location: string, price: string, detailUrl: string}}
+ */
+function apartmentFromListing(listing) {
+  return {
+    title: listing.title,
+    location: listing.location,
+    price: listing.price,
+    detailUrl: listing.detailUrl,
+  };
+}
+
+/**
+ * @param {Record<string, unknown>} row
+ * @returns {{title: string, location: string, price: string, detailUrl: string}}
+ */
+function apartmentFromCurrent(row) {
+  return {
+    title: String(row.title || ''),
+    location: String(row.location || ''),
+    price: String(row.price || ''),
+    detailUrl: String(row.detailUrl || ''),
+  };
+}
+
+/**
+ * @param {NormalizedListing} listing
+ * @param {'new'|'reappeared'} mode
+ * @returns {ListingFieldDiff[]}
+ */
+function buildListingDetailsDiff(listing, mode) {
+  const previousState = mode === 'reappeared' ? 'removed' : null;
+  return [
+    buildDiff('state', previousState, 'new'),
+    buildDiff('title', null, listing.title),
+    buildDiff('location', null, listing.location),
+    buildDiff('price', null, listing.price),
+    buildDiff('price_num', null, listing.priceNum),
+    buildDiff('detailUrl', null, listing.detailUrl),
+  ];
+}
+
+/**
  * @param {Record<string, unknown>} previous
  * @param {NormalizedListing} current
  * @returns {{priceDiffs: ListingFieldDiff[], attributeDiffs: ListingFieldDiff[]}}
@@ -147,7 +190,8 @@ function detectChanges(previousMap, normalizedListings, maxMissCount, nowIso) {
       events.push({
         listingId: listing.id,
         changeType: 'new',
-        diff: [buildDiff('state', null, 'new')],
+        diff: buildListingDetailsDiff(listing, 'new'),
+        apartment: apartmentFromListing(listing),
       });
       newCount += 1;
 
@@ -169,6 +213,7 @@ function detectChanges(previousMap, normalizedListings, maxMissCount, nowIso) {
         listingId: listing.id,
         changeType: 'price_changed',
         diff: priceDiffs,
+        apartment: apartmentFromListing(listing),
       });
       priceChangedCount += 1;
     }
@@ -178,6 +223,7 @@ function detectChanges(previousMap, normalizedListings, maxMissCount, nowIso) {
         listingId: listing.id,
         changeType: 'attributes_changed',
         diff: attributeDiffs,
+        apartment: apartmentFromListing(listing),
       });
       attributesChangedCount += 1;
     }
@@ -186,7 +232,8 @@ function detectChanges(previousMap, normalizedListings, maxMissCount, nowIso) {
       events.push({
         listingId: listing.id,
         changeType: 'new',
-        diff: [buildDiff('state', 'removed', 'new')],
+        diff: buildListingDetailsDiff(listing, 'reappeared'),
+        apartment: apartmentFromListing(listing),
       });
       events.push({
         listingId: listing.id,
@@ -195,6 +242,7 @@ function detectChanges(previousMap, normalizedListings, maxMissCount, nowIso) {
           buildDiff('miss_count', Number(previous.miss_count), 0),
           buildDiff('is_active', false, true),
         ],
+        apartment: apartmentFromListing(listing),
       });
       newCount += 1;
       reappearedCount += 1;
@@ -229,6 +277,7 @@ function detectChanges(previousMap, normalizedListings, maxMissCount, nowIso) {
           buildDiff('miss_count', previousMiss, nextMiss),
           buildDiff('is_active', true, false),
         ],
+        apartment: apartmentFromCurrent(previous),
       });
       removedCount += 1;
     }

@@ -35,6 +35,14 @@
  */
 
 /**
+ * @typedef {Object} ApartmentSummary
+ * @property {string} title
+ * @property {string} location
+ * @property {string} price
+ * @property {string} detailUrl
+ */
+
+/**
  * @typedef {Object} ListingFieldDiff
  * @property {string} field
  * @property {unknown} old
@@ -50,6 +58,7 @@
  * @property {string} listingId
  * @property {ChangeType} changeType
  * @property {ListingFieldDiff[]} diff
+ * @property {ApartmentSummary} [apartment]
  */
 
 /**
