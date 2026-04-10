@@ -1,19 +1,5 @@
-/**
- * @typedef {Object} Listing
- * @property {string} id Stable listing identifier.
- * @property {string} title
- * @property {string} price
- * @property {string} location
- * @property {string} detailUrl
- * @property {string} scrapedAt ISO timestamp.
- * @property {string} siteId Adapter site identifier.
- */
-
-/**
- * @typedef {Object} SiteAdapter
- * @property {string} siteId
- * @property {(params: Record<string, unknown>) => Promise<Listing[]>} list
- */
+/** @typedef {import('./types').Listing} Listing */
+/** @typedef {import('./types').SiteAdapter} SiteAdapter */
 
 /**
  * Basic runtime contract validation for adapters.

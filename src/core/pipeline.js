@@ -1,7 +1,7 @@
 const { assertValidAdapter } = require('./adapter');
 
 /**
- * @param {Record<string, import('./adapter').SiteAdapter>} adapters
+ * @param {Record<string, import('./types').SiteAdapter>} adapters
  */
 function createPipeline(adapters) {
   for (const adapter of Object.values(adapters)) {
