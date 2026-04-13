@@ -8,6 +8,7 @@ const { adapters } = require('./src/adapters');
 const { createPipeline } = require('./src/core/pipeline');
 const { createListingsStore, DEFAULT_MAX_MISS_COUNT } = require('./src/core/turso-store');
 const { notifyChanges } = require('./src/core/notifications');
+const { startDashboardServer } = require('./src/dashboard/server');
 
 function parseArgs(argv) {
   const parsed = {};
@@ -42,12 +43,14 @@ function printHelp(siteIds) {
     '  node scrape.js --status [--db <url>]',
     '  node scrape.js --once [options]',
     '  node scrape.js --schedule [<cron>] [options]',
+    '  node scrape.js --dashboard [--port 3000] [--db <url>]',
     '',
     'Main commands:',
     '  --site <id>                 Site adapter id to execute',
     '  --status                    Show database status (without scraping)',
     '  --once                      Run all configured sites once and exit',
     '  --schedule [cron]           Run all configured sites on a cron schedule',
+    '  --dashboard                 Start read-only web dashboard',
     '',
     'Optional:',
     '  --out <file>                Write JSON output to file',
@@ -62,8 +65,10 @@ function printHelp(siteIds) {
     '  --max-pages <number>        Preferred pagination flag',
     '  --maxPages <number>         Backward-compatible alias',
     '  --headless <true|false>     Default: true',
+    '  --port <number>             Dashboard port (default: 3000)',
     '  --health-port <number>      Expose /health with last successful run',
     '  SCRAPE_CRON                 Default cron expression for --schedule',
+    '  DASHBOARD_PORT              Default port for dashboard',
     '  HEALTH_PORT                 Default port for health server',
     '  --help                      Show this message',
     '',
@@ -482,6 +487,30 @@ async function runSchedulerCommand(options) {
   }
 }
 
+async function runDashboardCommand(args) {
+  const dashboardPort = parsePort(readFirstArg(args, ['port']) || process.env.DASHBOARD_PORT || 3000);
+  const dashboard = await startDashboardServer({
+    port: dashboardPort || 3000,
+    dbUrl: args.db,
+  });
+
+  logInfo(`Dashboard started at ${dashboard.url}`);
+
+  const shutdown = async (signal) => {
+    logInfo(`Received ${signal}. Shutting down dashboard...`);
+    await dashboard.close();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => {
+    void shutdown('SIGINT');
+  });
+
+  process.on('SIGTERM', () => {
+    void shutdown('SIGTERM');
+  });
+}
+
 (async () => {
   const pipeline = createPipeline(adapters);
   const args = parseArgs(process.argv.slice(2));
@@ -499,6 +528,11 @@ async function runSchedulerCommand(options) {
     } finally {
       await store.close();
     }
+    return;
+  }
+
+  if (toBoolean(args.dashboard, false)) {
+    await runDashboardCommand(args);
     return;
   }
 

@@ -118,7 +118,8 @@ function formatChangeBlock(event) {
 }
 
 function buildMessage(siteId, report) {
-  const lines = [
+  const MAX_TELEGRAM_MESSAGE_LENGTH = 3900;
+  const headerLines = [
     '<b>Real_State changes detected</b>',
     `Site: <b>${escapeHtml(siteId)}</b>`,
     report.runId ? `Run: <code>${escapeHtml(report.runId)}</code>` : null,
@@ -128,23 +129,34 @@ function buildMessage(siteId, report) {
     '<b>Details</b>',
   ].filter(Boolean);
 
+  let text = headerLines.join('\n');
   const events = Array.isArray(report.changes) ? report.changes : [];
-  const shownEvents = events.slice(0, 12);
-  for (const event of shownEvents) {
-    lines.push(formatChangeBlock(event));
-    lines.push('');
+  let shownCount = 0;
+
+  for (const event of events.slice(0, 20)) {
+    const block = `\n\n${formatChangeBlock(event)}`;
+    if (text.length + block.length > MAX_TELEGRAM_MESSAGE_LENGTH) {
+      break;
+    }
+
+    text += block;
+    shownCount += 1;
   }
 
-  if (events.length > shownEvents.length) {
-    lines.push(`<i>${events.length - shownEvents.length} more change events omitted</i>`);
+  const omittedCount = events.length - shownCount;
+  if (omittedCount > 0) {
+    const omissionText = `\n\n<i>${omittedCount} more change events omitted</i>`;
+    if (text.length + omissionText.length <= MAX_TELEGRAM_MESSAGE_LENGTH) {
+      text += omissionText;
+    }
+
+    const truncatedText = '\n\n<i>message truncated to keep valid Telegram HTML</i>';
+    if (text.length + truncatedText.length <= MAX_TELEGRAM_MESSAGE_LENGTH) {
+      text += truncatedText;
+    }
   }
 
-  let text = lines.join('\n').trim();
-  if (text.length > 3900) {
-    text = `${text.slice(0, 3900)}\n\n<i>message truncated</i>`;
-  }
-
-  return text;
+  return text.trim();
 }
 
 async function sendTelegramMessage(params) {

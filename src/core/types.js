@@ -10,6 +10,14 @@
  * @property {string} price Raw price text from source site.
  * @property {string} location
  * @property {string} detailUrl
+ * @property {string} [reference] Listing reference code when available.
+ * @property {string} [description] Short listing description.
+ * @property {'sale'|'rent'|''} [transactionType]
+ * @property {string} [size] Size text (for example: "82 m2").
+ * @property {number | null} [bedrooms]
+ * @property {number | null} [bathrooms]
+ * @property {number | null} [garages]
+ * @property {string} [imageUrl]
  * @property {string} scrapedAt ISO timestamp.
  * @property {string} siteId Adapter site identifier.
  */
@@ -31,6 +39,14 @@
  * @property {string} price
  * @property {number | null} priceNum
  * @property {string} detailUrl
+ * @property {string} reference
+ * @property {string} description
+ * @property {'sale'|'rent'|''} transactionType
+ * @property {string} size
+ * @property {number | null} bedrooms
+ * @property {number | null} bathrooms
+ * @property {number | null} garages
+ * @property {string} imageUrl
  * @property {string} scrapedAt
  */
 

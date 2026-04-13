@@ -17,9 +17,181 @@ function deriveStableId(detailUrl) {
   return `url_${hash}`;
 }
 
+function parsePositiveInt(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  const rounded = Math.round(parsed);
+  return rounded >= 0 ? rounded : null;
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value !== 'string') {
+      continue;
+    }
+
+    const cleaned = clean(value);
+    if (cleaned) {
+      return cleaned;
+    }
+  }
+  return '';
+}
+
+function firstNonNullNumber(...values) {
+  for (const value of values) {
+    const parsed = parsePositiveInt(value);
+    if (parsed !== null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function mergeListingWithDetails(base, extra) {
+  return {
+    ...base,
+    reference: firstNonEmptyString(base.reference, extra.reference),
+    description: firstNonEmptyString(extra.description, base.description),
+    transactionType: firstNonEmptyString(extra.transactionType, base.transactionType),
+    size: firstNonEmptyString(extra.size, base.size),
+    bedrooms: firstNonNullNumber(extra.bedrooms, base.bedrooms),
+    bathrooms: firstNonNullNumber(extra.bathrooms, base.bathrooms),
+    garages: firstNonNullNumber(extra.garages, base.garages),
+    imageUrl: firstNonEmptyString(extra.imageUrl, base.imageUrl),
+  };
+}
+
+function needsDetailEnrichment(listing) {
+  return !listing.reference
+    || !listing.description
+    || !listing.transactionType
+    || !listing.size
+    || listing.bedrooms === null
+    || listing.bathrooms === null
+    || listing.garages === null
+    || !listing.imageUrl;
+}
+
+async function scrapeListingDetail(detailPage, detailUrl) {
+  await detailPage.goto(detailUrl, { waitUntil: 'domcontentloaded' });
+  await detailPage.waitForTimeout(500);
+
+  return detailPage.evaluate((url) => {
+    const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const toNullableNumber = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+
+    const readInt = (pattern, source) => {
+      const match = normalize(source).match(pattern);
+      if (!match) {
+        return null;
+      }
+      const parsed = Number(match[1]);
+      return Number.isFinite(parsed) ? Math.round(parsed) : null;
+    };
+
+    const detailTitle = normalize((document.querySelector('h1, h2') || {}).textContent || '');
+
+    const summaryHeading = Array.from(document.querySelectorAll('h1,h2,h3,h4')).find((node) => /resumen del inmueble/i.test(normalize(node.textContent)));
+    let summaryText = '';
+    if (summaryHeading) {
+      const parts = [];
+      let cursor = summaryHeading.nextElementSibling;
+      while (cursor && parts.length < 5) {
+        const text = normalize(cursor.textContent);
+        if (/caracter[ií]sticas del inmueble|contacta con un agente|b[úu]squeda avanzada/i.test(text)) {
+          break;
+        }
+        if (text) {
+          parts.push(text);
+        }
+        cursor = cursor.nextElementSibling;
+      }
+      summaryText = normalize(parts.join(' '));
+    }
+
+    const descriptionHeading = Array.from(document.querySelectorAll('h1,h2,h3,h4')).find((node) => /descripci[oó]n del inmueble/i.test(normalize(node.textContent)));
+    let description = '';
+    if (descriptionHeading) {
+      const parts = [];
+      let cursor = descriptionHeading.nextElementSibling;
+      while (cursor && parts.length < 3) {
+        const text = normalize(cursor.textContent);
+        if (/resumen del inmueble|caracter[ií]sticas del inmueble/i.test(text)) {
+          break;
+        }
+        if (text) {
+          parts.push(text);
+        }
+        cursor = cursor.nextElementSibling;
+      }
+      description = normalize(parts.join(' '));
+    }
+
+    if (!description) {
+      description = normalize((document.querySelector('.description, .property-description, .detail-paragraph') || {}).textContent || '');
+    }
+
+    const transactionRaw = normalize((document.querySelector('.feature') || {}).textContent || '');
+    const transactionSource = normalize(`${transactionRaw} ${summaryText} ${description} ${detailTitle}`).toLowerCase();
+    const transactionType = /\b(alquiler|rent|to let|arrenda)\b/.test(transactionSource)
+      ? 'rent'
+      : /\b(venta|sale|for sale|vender)\b/.test(transactionSource)
+        ? 'sale'
+        : '';
+
+    const referenceMatch = `${summaryText} ${description}`.match(/\b(?:referencia|ref\.?|id)\b\s*[:#-]?\s*([A-Za-z0-9_-]+)/i);
+    const fallbackRef = (url.match(/\/inmuebles\/inmueble_detalles\/([^/?#]+)/i) || [])[1] || '';
+    const reference = normalize(referenceMatch ? referenceMatch[1] : fallbackRef);
+
+    const sizeMatch = `${summaryText} ${description} ${detailTitle}`.match(/(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:m²|m2)\b/i);
+    const size = normalize(sizeMatch ? `${sizeMatch[1]} m2` : '');
+
+    const scopedFacts = `${summaryText} ${description} ${detailTitle}`;
+    const bedrooms = readInt(/\b(\d+)\s*(?:hab(?:itaciones?)?|dorm(?:itorios?)?)\b/i, scopedFacts)
+      ?? readInt(/\b(?:hab(?:itaciones?)?|dorm(?:itorios?)?)\s*(\d+)\b/i, scopedFacts);
+    const bathrooms = readInt(/\b(\d+)\s*(?:bañ(?:o|os)|ban(?:o|os)|aseos?)\b/i, scopedFacts)
+      ?? readInt(/\b(?:bañ(?:o|os)|ban(?:o|os)|aseos?)\s*(\d+)\b/i, scopedFacts);
+    const garages = readInt(/\b(\d+)\s*(?:garajes?|garaje|plazas?\s+de\s+parking|parking)\b/i, scopedFacts)
+      ?? readInt(/\b(?:garajes?|garaje|plazas?\s+de\s+parking|parking)\s*(\d+)\b/i, scopedFacts);
+
+    const imageUrl = normalize(
+      (document.querySelector('meta[property="og:image"]') || {}).content
+      || (document.querySelector('.owl-carousel .item img, .property-slider img, img') || {}).src
+      || ''
+    );
+
+    return {
+      reference,
+      description,
+      transactionType,
+      size,
+      bedrooms: toNullableNumber(bedrooms),
+      bathrooms: toNullableNumber(bathrooms),
+      garages: toNullableNumber(garages),
+      imageUrl,
+    };
+  }, detailUrl);
+}
+
 async function scrapeVisiblePageListings(page, scrapingTimestamp) {
   return page.evaluate((timestamp) => {
     const normalize = (value) => (value || '').replace(/\s+/g, ' ').trim();
+    const readInt = (pattern, source) => {
+      const match = source.match(pattern);
+      if (!match) {
+        return null;
+      }
+      const parsed = Number(match[1]);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
 
     const rows = Array.from(document.querySelectorAll('.property-list-list')).filter((row) => {
       const style = window.getComputedStyle(row);
@@ -48,11 +220,51 @@ async function scrapeVisiblePageListings(page, scrapingTimestamp) {
         const fallbackPriceMatch = rowText.match(/(\d{1,3}(?:\.\d{3})*,\d{2}\s*€|Precio\s+consultar)/i);
         const price = normalize(priceNode ? priceNode.textContent : fallbackPriceMatch ? fallbackPriceMatch[1] : '');
 
+        const referenceMatch = rowText.match(/\b(?:ref(?:erencia)?|id)\b\s*[:#-]?\s*([A-Za-z0-9_-]+)/i);
+        const detailRefMatch = detailUrl.match(/\/inmuebles\/inmueble_detalles\/([^/?#]+)/i);
+        const reference = normalize(referenceMatch ? referenceMatch[1] : detailRefMatch ? detailRefMatch[1] : '');
+
+        const paragraphTexts = Array.from(row.querySelectorAll('p')).map((p) => normalize(p.textContent));
+        const description =
+          paragraphTexts.find((txt) => txt && txt !== locationParagraph && txt !== price && txt.length > 20)
+          || '';
+
+        const transactionType = /\b(alquiler|arrenda|rent|to let)\b/i.test(rowText)
+          ? 'rent'
+          : /\b(venta|sale|for sale|vender)\b/i.test(rowText)
+            ? 'sale'
+            : '';
+
+        const sizeMatch = rowText.match(/(\d{1,4}(?:[.,]\d{1,2})?)\s*(?:m²|m2)\b/i);
+        const size = normalize(sizeMatch ? `${sizeMatch[1]} m2` : '');
+
+        const bedrooms = readInt(/\b(\d+)\s*(?:hab(?:itaciones?)?|dorm(?:itorios?)?|bed(?:rooms?)?)\b/i, rowText);
+        const bathrooms = readInt(/\b(\d+)\s*(?:bañ(?:o|os)|ban(?:o|os)|bath(?:room|rooms)?)\b/i, rowText);
+        const garages = readInt(/\b(\d+)\s*(?:garajes?|garaje|plazas?\s+de\s+garaje|parking)\b/i, rowText);
+
+        const imageNode = row.querySelector('img');
+        const imageUrl = normalize(
+          imageNode
+            ? imageNode.getAttribute('data-src')
+              || imageNode.getAttribute('data-lazy-src')
+              || imageNode.getAttribute('src')
+              || ''
+            : ''
+        );
+
         return {
           title,
           price,
           location: normalize(locationParagraph),
           detailUrl,
+          reference,
+          description,
+          transactionType,
+          size,
+          bedrooms,
+          bathrooms,
+          garages,
+          imageUrl,
           scrapedAt: timestamp,
         };
       })
@@ -102,6 +314,8 @@ const iparraldeAdapter = {
     const propertyType = clean(params.propertyType || 'piso');
     const municipality = clean(params.municipality || 'Hendaye');
     const maxPages = Number.isFinite(Number(params.maxPages)) ? Number(params.maxPages) : 25;
+    const detailEnrichment = params.detailEnrichment !== false;
+    const maxDetailListings = Number.isFinite(Number(params.maxDetailListings)) ? Math.max(0, Number(params.maxDetailListings)) : 60;
     const headless = params.headless !== false;
 
     const browser = await chromium.launch({ headless });
@@ -147,6 +361,32 @@ const iparraldeAdapter = {
           break;
         }
         pageIndex += 1;
+      }
+
+      if (detailEnrichment && byId.size > 0) {
+        const detailPage = await context.newPage();
+        let enrichedCount = 0;
+
+        try {
+          for (const [id, listing] of byId.entries()) {
+            if (enrichedCount >= maxDetailListings) {
+              break;
+            }
+            if (!listing.detailUrl || !needsDetailEnrichment(listing)) {
+              continue;
+            }
+
+            try {
+              const detailData = await scrapeListingDetail(detailPage, listing.detailUrl);
+              byId.set(id, mergeListingWithDetails(listing, detailData));
+              enrichedCount += 1;
+            } catch {
+              // Keep partial listing data if a detail page fails.
+            }
+          }
+        } finally {
+          await detailPage.close();
+        }
       }
 
       return Array.from(byId.values());

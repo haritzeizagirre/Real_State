@@ -14,6 +14,41 @@ function normalizeText(value) {
 }
 
 /**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+function normalizeInteger(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return null;
+  }
+
+  return Math.round(num);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {'sale'|'rent'|''}
+ */
+function normalizeTransactionType(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return '';
+  }
+  if (['sale', 'venta'].includes(normalized)) {
+    return 'sale';
+  }
+  if (['rent', 'alquiler'].includes(normalized)) {
+    return 'rent';
+  }
+  return '';
+}
+
+/**
  * @param {unknown} rawPrice
  * @returns {number | null}
  */
@@ -76,6 +111,14 @@ function normalizeListing(row) {
     price: String(row.price || ''),
     priceNum: normalizePriceNumber(row.price),
     detailUrl: String(row.detailUrl || ''),
+    reference: String(row.reference || ''),
+    description: String(row.description || ''),
+    transactionType: normalizeTransactionType(row.transactionType),
+    size: String(row.size || ''),
+    bedrooms: normalizeInteger(row.bedrooms),
+    bathrooms: normalizeInteger(row.bathrooms),
+    garages: normalizeInteger(row.garages),
+    imageUrl: String(row.imageUrl || ''),
     scrapedAt: String(row.scrapedAt || ''),
   };
 }
@@ -130,6 +173,14 @@ function buildListingDetailsDiff(listing, mode) {
     buildDiff('price', null, listing.price),
     buildDiff('price_num', null, listing.priceNum),
     buildDiff('detailUrl', null, listing.detailUrl),
+    buildDiff('reference', null, listing.reference),
+    buildDiff('description', null, listing.description),
+    buildDiff('transactionType', null, listing.transactionType),
+    buildDiff('size', null, listing.size),
+    buildDiff('bedrooms', null, listing.bedrooms),
+    buildDiff('bathrooms', null, listing.bathrooms),
+    buildDiff('garages', null, listing.garages),
+    buildDiff('imageUrl', null, listing.imageUrl),
   ];
 }
 
@@ -155,6 +206,37 @@ function determineChanges(previous, current) {
   }
   if ((previous.detailUrl || '') !== current.detailUrl) {
     attributeDiffs.push(buildDiff('detailUrl', previous.detailUrl || '', current.detailUrl));
+  }
+  if ((previous.reference || '') !== current.reference) {
+    attributeDiffs.push(buildDiff('reference', previous.reference || '', current.reference));
+  }
+  if ((previous.description || '') !== current.description) {
+    attributeDiffs.push(buildDiff('description', previous.description || '', current.description));
+  }
+  if ((previous.transactionType || '') !== current.transactionType) {
+    attributeDiffs.push(buildDiff('transactionType', previous.transactionType || '', current.transactionType));
+  }
+  if ((previous.size || '') !== current.size) {
+    attributeDiffs.push(buildDiff('size', previous.size || '', current.size));
+  }
+
+  const previousBedrooms = normalizeInteger(previous.bedrooms);
+  if (previousBedrooms !== current.bedrooms) {
+    attributeDiffs.push(buildDiff('bedrooms', previousBedrooms, current.bedrooms));
+  }
+
+  const previousBathrooms = normalizeInteger(previous.bathrooms);
+  if (previousBathrooms !== current.bathrooms) {
+    attributeDiffs.push(buildDiff('bathrooms', previousBathrooms, current.bathrooms));
+  }
+
+  const previousGarages = normalizeInteger(previous.garages);
+  if (previousGarages !== current.garages) {
+    attributeDiffs.push(buildDiff('garages', previousGarages, current.garages));
+  }
+
+  if ((previous.imageUrl || '') !== current.imageUrl) {
+    attributeDiffs.push(buildDiff('imageUrl', previous.imageUrl || '', current.imageUrl));
   }
 
   return {

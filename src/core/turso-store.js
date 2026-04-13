@@ -48,6 +48,43 @@ function readRowField(row, key, index, fallback = null) {
 
 /**
  * @param {unknown} client
+ * @param {string} tableName
+ * @returns {Promise<Set<string>>}
+ */
+async function readTableColumns(client, tableName) {
+  const result = await client.execute(`PRAGMA table_info(${tableName})`);
+  const columns = new Set();
+
+  for (const row of result.rows) {
+    const name = String(readRowField(row, 'name', 1, '') || '').trim();
+    if (name) {
+      columns.add(name);
+    }
+  }
+
+  return columns;
+}
+
+/**
+ * @param {unknown} client
+ * @param {string} tableName
+ * @param {Array<{name: string, definition: string}>} columns
+ * @returns {Promise<void>}
+ */
+async function ensureColumns(client, tableName, columns) {
+  const existing = await readTableColumns(client, tableName);
+
+  for (const column of columns) {
+    if (existing.has(column.name)) {
+      continue;
+    }
+
+    await client.execute(`ALTER TABLE ${tableName} ADD COLUMN ${column.definition}`);
+  }
+}
+
+/**
+ * @param {unknown} client
  * @returns {Promise<void>}
  */
 async function ensureSchema(client) {
@@ -73,6 +110,14 @@ async function ensureSchema(client) {
       price TEXT,
       price_num INTEGER,
       detailUrl TEXT,
+      reference TEXT,
+      description TEXT,
+      transactionType TEXT,
+      size TEXT,
+      bedrooms INTEGER,
+      bathrooms INTEGER,
+      garages INTEGER,
+      imageUrl TEXT,
       first_seen TEXT NOT NULL,
       last_seen TEXT NOT NULL,
       miss_count INTEGER NOT NULL DEFAULT 0,
@@ -92,6 +137,14 @@ async function ensureSchema(client) {
       price TEXT,
       price_num INTEGER,
       detailUrl TEXT,
+      reference TEXT,
+      description TEXT,
+      transactionType TEXT,
+      size TEXT,
+      bedrooms INTEGER,
+      bathrooms INTEGER,
+      garages INTEGER,
+      imageUrl TEXT,
       scrapedAt TEXT,
       PRIMARY KEY (run_id, siteId, listing_id),
       FOREIGN KEY (run_id) REFERENCES scrape_runs(run_id)
@@ -118,11 +171,52 @@ async function ensureSchema(client) {
       location TEXT,
       price TEXT,
       detailUrl TEXT,
+      reference TEXT,
+      description TEXT,
+      transactionType TEXT,
+      size TEXT,
+      bedrooms INTEGER,
+      bathrooms INTEGER,
+      garages INTEGER,
+      imageUrl TEXT,
       scrapedAt TEXT,
       siteId TEXT,
       updatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await ensureColumns(client, 'listings_current', [
+    { name: 'reference', definition: 'reference TEXT' },
+    { name: 'description', definition: 'description TEXT' },
+    { name: 'transactionType', definition: 'transactionType TEXT' },
+    { name: 'size', definition: 'size TEXT' },
+    { name: 'bedrooms', definition: 'bedrooms INTEGER' },
+    { name: 'bathrooms', definition: 'bathrooms INTEGER' },
+    { name: 'garages', definition: 'garages INTEGER' },
+    { name: 'imageUrl', definition: 'imageUrl TEXT' },
+  ]);
+
+  await ensureColumns(client, 'listings_snapshot', [
+    { name: 'reference', definition: 'reference TEXT' },
+    { name: 'description', definition: 'description TEXT' },
+    { name: 'transactionType', definition: 'transactionType TEXT' },
+    { name: 'size', definition: 'size TEXT' },
+    { name: 'bedrooms', definition: 'bedrooms INTEGER' },
+    { name: 'bathrooms', definition: 'bathrooms INTEGER' },
+    { name: 'garages', definition: 'garages INTEGER' },
+    { name: 'imageUrl', definition: 'imageUrl TEXT' },
+  ]);
+
+  await ensureColumns(client, 'apartments', [
+    { name: 'reference', definition: 'reference TEXT' },
+    { name: 'description', definition: 'description TEXT' },
+    { name: 'transactionType', definition: 'transactionType TEXT' },
+    { name: 'size', definition: 'size TEXT' },
+    { name: 'bedrooms', definition: 'bedrooms INTEGER' },
+    { name: 'bathrooms', definition: 'bathrooms INTEGER' },
+    { name: 'garages', definition: 'garages INTEGER' },
+    { name: 'imageUrl', definition: 'imageUrl TEXT' },
+  ]);
 
   await client.execute('CREATE INDEX IF NOT EXISTS idx_scrape_runs_site ON scrape_runs(siteId, run_id DESC)');
   await client.execute('CREATE INDEX IF NOT EXISTS idx_listings_current_site_active ON listings_current(siteId, is_active, miss_count DESC)');
@@ -153,6 +247,14 @@ async function createListingsStore(options = {}) {
           price,
           price_num,
           detailUrl,
+          reference,
+          description,
+          transactionType,
+          size,
+          bedrooms,
+          bathrooms,
+          garages,
+          imageUrl,
           first_seen,
           last_seen,
           miss_count,
@@ -166,21 +268,34 @@ async function createListingsStore(options = {}) {
 
     const map = new Map();
     for (const row of result.rows) {
+      const asText = (key, index) => {
+        const value = readRowField(row, key, index, '');
+        return value === null || value === undefined ? '' : String(value);
+      };
+
       const normalized = {
-        siteId: String(readRowField(row, 'siteId', 0, siteId)),
-        listing_id: String(readRowField(row, 'listing_id', 1, '')),
-        title: String(readRowField(row, 'title', 2, '')),
-        title_norm: String(readRowField(row, 'title_norm', 3, '')),
-        location: String(readRowField(row, 'location', 4, '')),
-        location_norm: String(readRowField(row, 'location_norm', 5, '')),
-        price: String(readRowField(row, 'price', 6, '')),
+        siteId: asText('siteId', 0),
+        listing_id: asText('listing_id', 1),
+        title: asText('title', 2),
+        title_norm: asText('title_norm', 3),
+        location: asText('location', 4),
+        location_norm: asText('location_norm', 5),
+        price: asText('price', 6),
         price_num: readRowField(row, 'price_num', 7, null),
-        detailUrl: String(readRowField(row, 'detailUrl', 8, '')),
-        first_seen: String(readRowField(row, 'first_seen', 9, '')),
-        last_seen: String(readRowField(row, 'last_seen', 10, '')),
-        miss_count: Number(readRowField(row, 'miss_count', 11, 0)),
-        is_active: Number(readRowField(row, 'is_active', 12, 1)),
-        removed_at: readRowField(row, 'removed_at', 13, null),
+        detailUrl: asText('detailUrl', 8),
+        reference: asText('reference', 9),
+        description: asText('description', 10),
+        transactionType: asText('transactionType', 11),
+        size: asText('size', 12),
+        bedrooms: readRowField(row, 'bedrooms', 13, null),
+        bathrooms: readRowField(row, 'bathrooms', 14, null),
+        garages: readRowField(row, 'garages', 15, null),
+        imageUrl: asText('imageUrl', 16),
+        first_seen: asText('first_seen', 17),
+        last_seen: asText('last_seen', 18),
+        miss_count: Number(readRowField(row, 'miss_count', 19, 0)),
+        is_active: Number(readRowField(row, 'is_active', 20, 1)),
+        removed_at: readRowField(row, 'removed_at', 21, null),
       };
       map.set(normalized.listing_id, normalized);
     }
@@ -225,8 +340,16 @@ async function createListingsStore(options = {}) {
             price,
             price_num,
             detailUrl,
+            reference,
+            description,
+            transactionType,
+            size,
+            bedrooms,
+            bathrooms,
+            garages,
+            imageUrl,
             scrapedAt
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         args: [
           runId,
@@ -237,6 +360,14 @@ async function createListingsStore(options = {}) {
           row.price,
           row.priceNum,
           row.detailUrl,
+          row.reference,
+          row.description,
+          row.transactionType,
+          row.size,
+          row.bedrooms,
+          row.bathrooms,
+          row.garages,
+          row.imageUrl,
           row.scrapedAt,
         ],
       });
@@ -257,12 +388,20 @@ async function createListingsStore(options = {}) {
             price,
             price_num,
             detailUrl,
+            reference,
+            description,
+            transactionType,
+            size,
+            bedrooms,
+            bathrooms,
+            garages,
+            imageUrl,
             first_seen,
             last_seen,
             miss_count,
             is_active,
             removed_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(siteId, listing_id) DO UPDATE SET
             title = excluded.title,
             title_norm = excluded.title_norm,
@@ -271,6 +410,14 @@ async function createListingsStore(options = {}) {
             price = excluded.price,
             price_num = excluded.price_num,
             detailUrl = excluded.detailUrl,
+            reference = excluded.reference,
+            description = excluded.description,
+            transactionType = excluded.transactionType,
+            size = excluded.size,
+            bedrooms = excluded.bedrooms,
+            bathrooms = excluded.bathrooms,
+            garages = excluded.garages,
+            imageUrl = excluded.imageUrl,
             first_seen = excluded.first_seen,
             last_seen = excluded.last_seen,
             miss_count = excluded.miss_count,
@@ -287,6 +434,14 @@ async function createListingsStore(options = {}) {
           row.price,
           row.priceNum,
           row.detailUrl,
+          row.reference,
+          row.description,
+          row.transactionType,
+          row.size,
+          row.bedrooms,
+          row.bathrooms,
+          row.garages,
+          row.imageUrl,
           row.firstSeen,
           row.lastSeen,
           row.missCount,
@@ -326,18 +481,58 @@ async function createListingsStore(options = {}) {
     for (const row of rows) {
       await client.execute({
         sql: `
-          INSERT INTO apartments (id, title, location, price, detailUrl, scrapedAt, siteId)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO apartments (
+            id,
+            title,
+            location,
+            price,
+            detailUrl,
+            reference,
+            description,
+            transactionType,
+            size,
+            bedrooms,
+            bathrooms,
+            garages,
+            imageUrl,
+            scrapedAt,
+            siteId
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET
             title = excluded.title,
             location = excluded.location,
             price = excluded.price,
             detailUrl = excluded.detailUrl,
+            reference = excluded.reference,
+            description = excluded.description,
+            transactionType = excluded.transactionType,
+            size = excluded.size,
+            bedrooms = excluded.bedrooms,
+            bathrooms = excluded.bathrooms,
+            garages = excluded.garages,
+            imageUrl = excluded.imageUrl,
             scrapedAt = excluded.scrapedAt,
             siteId = excluded.siteId,
             updatedAt = CURRENT_TIMESTAMP
         `,
-        args: [row.id, row.title, row.location, row.price, row.detailUrl, row.scrapedAt, row.siteId],
+        args: [
+          row.id,
+          row.title,
+          row.location,
+          row.price,
+          row.detailUrl,
+          row.reference,
+          row.description,
+          row.transactionType,
+          row.size,
+          row.bedrooms,
+          row.bathrooms,
+          row.garages,
+          row.imageUrl,
+          row.scrapedAt,
+          row.siteId,
+        ],
       });
     }
   }
