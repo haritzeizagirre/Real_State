@@ -1,6 +1,9 @@
 const path = require('path');
 const express = require('express');
 
+const PRICE_NUM_MIN = 1000;
+const PRICE_NUM_MAX = 5000000;
+
 function readConfig(options = {}) {
   const url = options.dbUrl || process.env.TURSO_DB || process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_TOKEN || process.env.TURSO_AUTH_TOKEN;
@@ -125,6 +128,33 @@ function inferBedrooms(source) {
   return null;
 }
 
+function normalizeFeatureCount(value) {
+  const parsed = toNumber(value, null);
+  if (parsed === null) {
+    return null;
+  }
+
+  const rounded = Math.round(parsed);
+  if (!Number.isInteger(rounded) || rounded < 0 || rounded > 20) {
+    return null;
+  }
+
+  return rounded;
+}
+
+function normalizeTransactionTypeFilter(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text) {
+    return '';
+  }
+
+  if (text === 'sale' || text === 'rent' || text === 'unknown') {
+    return text;
+  }
+
+  return '';
+}
+
 function parseDiffJson(raw) {
   if (!raw) {
     return [];
@@ -147,6 +177,10 @@ function buildListingFromRow(row) {
   const detailUrl = String(readRowField(row, 'detailUrl', 6, ''));
   const rawPrice = String(readRowField(row, 'price', 4, ''));
   const rawPriceNum = readRowField(row, 'price_num', 5, null);
+  const size = String(readRowField(row, 'size', 9, '') || '').trim();
+  const dbTransactionType = normalizeTransactionTypeFilter(readRowField(row, 'transactionType', 10, ''));
+  const dbBedrooms = normalizeFeatureCount(readRowField(row, 'bedrooms', 11, null));
+  const dbBathrooms = normalizeFeatureCount(readRowField(row, 'bathrooms', 12, null));
 
   return {
     siteId: String(readRowField(row, 'siteId', 0, '')),
@@ -155,11 +189,13 @@ function buildListingFromRow(row) {
     location,
     price: rawPrice,
     priceNum: normalizePriceNumber(rawPriceNum, rawPrice),
+    size,
     detailUrl,
     firstSeen: String(readRowField(row, 'first_seen', 7, '')),
     lastSeen: String(readRowField(row, 'last_seen', 8, '')),
-    transactionType: inferTransactionType(`${title} ${location} ${detailUrl}`),
-    bedrooms: inferBedrooms(title),
+    transactionType: dbTransactionType || inferTransactionType(`${title} ${location} ${detailUrl}`),
+    bedrooms: dbBedrooms !== null ? dbBedrooms : inferBedrooms(title),
+    bathrooms: dbBathrooms,
   };
 }
 
@@ -258,7 +294,11 @@ function parseHistoryIds(raw) {
 }
 
 async function startDashboardServer(options = {}) {
-  const { createClient } = await import('@tursodatabase/serverless/compat');
+  const compatMod = await import('@tursodatabase/serverless/compat');
+  const createClient = compatMod.createClient ?? compatMod.default?.createClient;
+  if (typeof createClient !== 'function') {
+    throw new Error('Could not resolve createClient from @tursodatabase/serverless/compat');
+  }
   const config = readConfig(options);
   const client = createClient(config);
   const app = express();
@@ -290,9 +330,27 @@ async function startDashboardServer(options = {}) {
         FROM listings_current
         WHERE is_active = 1 AND price_num BETWEEN 1000 AND 5000000
       `);
+      const bedroomValuesResult = await client.execute(`
+        SELECT DISTINCT bedrooms
+        FROM listings_current
+        WHERE is_active = 1 AND bedrooms IS NOT NULL AND bedrooms >= 0 AND bedrooms <= 20
+        ORDER BY bedrooms ASC
+      `);
+      const bathroomValuesResult = await client.execute(`
+        SELECT DISTINCT bathrooms
+        FROM listings_current
+        WHERE is_active = 1 AND bathrooms IS NOT NULL AND bathrooms >= 0 AND bathrooms <= 20
+        ORDER BY bathrooms ASC
+      `);
 
       const sites = sitesResult.rows.map((row) => String(readRowField(row, 'siteId', 0, '') || '')).filter(Boolean);
       const rangesRow = rangesResult.rows[0] || {};
+      const bedrooms = bedroomValuesResult.rows
+        .map((row) => normalizeFeatureCount(readRowField(row, 'bedrooms', 0, null)))
+        .filter((value) => value !== null);
+      const bathrooms = bathroomValuesResult.rows
+        .map((row) => normalizeFeatureCount(readRowField(row, 'bathrooms', 0, null)))
+        .filter((value) => value !== null);
 
       res.json({
         sites,
@@ -300,6 +358,8 @@ async function startDashboardServer(options = {}) {
           min: toNumber(readRowField(rangesRow, 'min_price', 0, null), null),
           max: toNumber(readRowField(rangesRow, 'max_price', 1, null), null),
         },
+        bedrooms,
+        bathrooms,
         transactionTypes: ['sale', 'rent', 'unknown'],
       });
     } catch (error) {
@@ -327,7 +387,11 @@ async function startDashboardServer(options = {}) {
           price_num,
           detailUrl,
           first_seen,
-          last_seen
+          last_seen,
+          size,
+          transactionType,
+          bedrooms,
+          bathrooms
         FROM listings_current
         WHERE ${where.join(' AND ')}
       `;
@@ -355,6 +419,11 @@ async function startDashboardServer(options = {}) {
         items = items.filter((item) => item.bedrooms === bedrooms);
       }
 
+      const bathrooms = toNumber(req.query.bathrooms, null);
+      if (bathrooms !== null) {
+        items = items.filter((item) => item.bathrooms === bathrooms);
+      }
+
       sortListings(items, String(req.query.sortBy || ''), String(req.query.sortDir || 'desc'));
 
       res.json({
@@ -370,9 +439,36 @@ async function startDashboardServer(options = {}) {
     try {
       const args = [];
       const where = [];
+
+      const txType = normalizeTransactionTypeFilter(req.query.transactionType);
+      const priceMin = toNumber(req.query.priceMin, null);
+      const priceMax = toNumber(req.query.priceMax, null);
+      const bedrooms = normalizeFeatureCount(req.query.bedrooms);
+      const bathrooms = normalizeFeatureCount(req.query.bathrooms);
+
       if (req.query.site) {
         where.push('c.siteId = ?');
         args.push(String(req.query.site));
+      }
+      if (txType) {
+        where.push(`COALESCE(cur.transactionType, snap.transactionType, '') = ?`);
+        args.push(txType);
+      }
+      if (priceMin !== null) {
+        where.push('COALESCE(cur.price_num, snap.price_num) >= ?');
+        args.push(priceMin);
+      }
+      if (priceMax !== null) {
+        where.push('COALESCE(cur.price_num, snap.price_num) <= ?');
+        args.push(priceMax);
+      }
+      if (bedrooms !== null) {
+        where.push('COALESCE(cur.bedrooms, snap.bedrooms) = ?');
+        args.push(bedrooms);
+      }
+      if (bathrooms !== null) {
+        where.push('COALESCE(cur.bathrooms, snap.bathrooms) = ?');
+        args.push(bathrooms);
       }
 
       const limit = Math.max(10, Math.min(400, toNumber(req.query.limit, 120) || 120));
@@ -425,11 +521,36 @@ async function startDashboardServer(options = {}) {
   app.get('/api/summary', async (req, res) => {
     try {
       const site = String(req.query.site || '').trim();
+      const txType = normalizeTransactionTypeFilter(req.query.transactionType);
+      const priceMin = toNumber(req.query.priceMin, null);
+      const priceMax = toNumber(req.query.priceMax, null);
+      const bedrooms = normalizeFeatureCount(req.query.bedrooms);
+      const bathrooms = normalizeFeatureCount(req.query.bathrooms);
       const activeArgs = [];
       const activeWhere = ['is_active = 1'];
       if (site) {
         activeWhere.push('siteId = ?');
         activeArgs.push(site);
+      }
+      if (txType) {
+        activeWhere.push('transactionType = ?');
+        activeArgs.push(txType);
+      }
+      if (priceMin !== null) {
+        activeWhere.push('price_num >= ?');
+        activeArgs.push(priceMin);
+      }
+      if (priceMax !== null) {
+        activeWhere.push('price_num <= ?');
+        activeArgs.push(priceMax);
+      }
+      if (bedrooms !== null) {
+        activeWhere.push('bedrooms = ?');
+        activeArgs.push(bedrooms);
+      }
+      if (bathrooms !== null) {
+        activeWhere.push('bathrooms = ?');
+        activeArgs.push(bathrooms);
       }
 
       const activeResult = await client.execute({
@@ -463,12 +584,28 @@ async function startDashboardServer(options = {}) {
         const runId = toNumber(readRowField(latestRun, 'run_id', 0, 0), 0);
         const changesResult = await client.execute({
           sql: `
-            SELECT change_type, COUNT(*) AS cnt
-            FROM listing_changes
-            WHERE run_id = ?
-            GROUP BY change_type
+            SELECT c.change_type, COUNT(*) AS cnt
+            FROM listing_changes c
+            LEFT JOIN listings_current cur
+              ON cur.siteId = c.siteId AND cur.listing_id = c.listing_id
+            LEFT JOIN listings_snapshot snap
+              ON snap.run_id = c.run_id AND snap.siteId = c.siteId AND snap.listing_id = c.listing_id
+            WHERE c.run_id = ?
+              ${txType ? "AND COALESCE(cur.transactionType, snap.transactionType, '') = ?" : ''}
+              ${priceMin !== null ? 'AND COALESCE(cur.price_num, snap.price_num) >= ?' : ''}
+              ${priceMax !== null ? 'AND COALESCE(cur.price_num, snap.price_num) <= ?' : ''}
+              ${bedrooms !== null ? 'AND COALESCE(cur.bedrooms, snap.bedrooms) = ?' : ''}
+              ${bathrooms !== null ? 'AND COALESCE(cur.bathrooms, snap.bathrooms) = ?' : ''}
+            GROUP BY c.change_type
           `,
-          args: [runId],
+          args: [
+            runId,
+            ...(txType ? [txType] : []),
+            ...(priceMin !== null ? [priceMin] : []),
+            ...(priceMax !== null ? [priceMax] : []),
+            ...(bedrooms !== null ? [bedrooms] : []),
+            ...(bathrooms !== null ? [bathrooms] : []),
+          ],
         });
 
         for (const row of changesResult.rows) {
@@ -490,11 +627,23 @@ async function startDashboardServer(options = {}) {
           JOIN scrape_runs r ON r.run_id = s.run_id
           WHERE s.price_num BETWEEN 1000 AND 5000000
           ${site ? 'AND r.siteId = ?' : ''}
+          ${txType ? 'AND s.transactionType = ?' : ''}
+          ${priceMin !== null ? 'AND s.price_num >= ?' : ''}
+          ${priceMax !== null ? 'AND s.price_num <= ?' : ''}
+          ${bedrooms !== null ? 'AND s.bedrooms = ?' : ''}
+          ${bathrooms !== null ? 'AND s.bathrooms = ?' : ''}
           GROUP BY s.run_id, r.siteId, r.started_at, r.finished_at
           ORDER BY s.run_id DESC
           LIMIT 48
         `,
-        args: site ? [site] : [],
+        args: [
+          ...(site ? [site] : []),
+          ...(txType ? [txType] : []),
+          ...(priceMin !== null ? [priceMin] : []),
+          ...(priceMax !== null ? [priceMax] : []),
+          ...(bedrooms !== null ? [bedrooms] : []),
+          ...(bathrooms !== null ? [bathrooms] : []),
+        ],
       });
 
       const timeline = timelineResult.rows
@@ -512,9 +661,10 @@ async function startDashboardServer(options = {}) {
         sql: `
           SELECT price_num
           FROM listings_current
-          WHERE ${activeWhere.join(' AND ')} AND price_num BETWEEN 1000 AND 5000000
+          WHERE ${activeWhere.join(' AND ')}
+            AND price_num BETWEEN ? AND ?
         `,
-        args: activeArgs,
+        args: [...activeArgs, PRICE_NUM_MIN, PRICE_NUM_MAX],
       });
 
       const prices = histogramResult.rows

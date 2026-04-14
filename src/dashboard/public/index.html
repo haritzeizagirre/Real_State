@@ -1,134 +1,282 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html class="dark" lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
   <title>Real_State Dashboard</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  >
-  <link rel="stylesheet" href="/styles.css">
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+tailwind.config = {
+    darkMode: "class",
+    theme: {
+        extend: {
+            "colors": {
+                "on-secondary-fixed": "#002117",
+                "on-error-container": "#ffdad6",
+                "surface-tint": "#e9c176",
+                "primary-fixed": "#ffdea5",
+                "surface-variant": "#353534",
+                "surface-container-high": "#2a2a2a",
+                "secondary-fixed": "#b0f0d6",
+                "on-secondary": "#003829",
+                "on-primary-container": "#997735",
+                "surface-container-highest": "#353534",
+                "outline-variant": "#434747",
+                "secondary-fixed-dim": "#95d3ba",
+                "on-primary": "#412d00",
+                "outline": "#8e9191",
+                "background": "#131313",
+                "surface-container-lowest": "#0e0e0e",
+                "tertiary-fixed": "#e0e2e6",
+                "on-primary-fixed": "#261900",
+                "on-secondary-container": "#83c2a9",
+                "inverse-primary": "#775a19",
+                "on-tertiary": "#2d3134",
+                "primary": "#e9c176",
+                "on-primary-fixed-variant": "#5d4201",
+                "on-surface": "#e5e2e1",
+                "error": "#ffb4ab",
+                "primary-fixed-dim": "#e9c176",
+                "surface-container-low": "#1c1b1b",
+                "inverse-on-surface": "#313030",
+                "surface-container": "#201f1f",
+                "on-surface-variant": "#c4c7c7",
+                "secondary": "#95d3ba",
+                "error-container": "#93000a",
+                "on-secondary-fixed-variant": "#0b513d",
+                "secondary-container": "#0b513d",
+                "surface-dim": "#131313",
+                "tertiary-container": "#0e1114",
+                "on-tertiary-container": "#7a7d80",
+                "on-tertiary-fixed": "#191c1f",
+                "on-background": "#e5e2e1",
+                "surface-bright": "#3a3939",
+                "on-tertiary-fixed-variant": "#44474a",
+                "tertiary": "#c4c7ca",
+                "on-error": "#690005",
+                "inverse-surface": "#e5e2e1",
+                "tertiary-fixed-dim": "#c4c7ca",
+                "primary-container": "#190f00",
+                "surface": "#131313"
+            },
+            "borderRadius": {
+                "DEFAULT": "0.125rem",
+                "lg": "0.25rem",
+                "xl": "0.5rem",
+                "full": "0.75rem"
+            },
+            "fontFamily": {
+                "headline": ["Manrope"],
+                "body": ["Inter"],
+                "label": ["Inter"]
+            }
+        }
+    }
+}
+  </script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      body { font-family: 'Inter', sans-serif; }
+      .font-manrope { font-family: 'Manrope', sans-serif; }
+      .glass-panel {
+          background: rgba(53, 53, 52, 0.6);
+          backdrop-filter: blur(20px);
+      }
+      .material-symbols-outlined {
+          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      
+      /* Map dark mode override */
+      .leaflet-layer,
+      .leaflet-control-zoom-in,
+      .leaflet-control-zoom-out,
+      .leaflet-control-attribution {
+        filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(120%);
+      }
+
+
+      
+      canvas {
+        background-color: transparent !important;
+      }
+    }
+  </style>
 </head>
-<body>
-  <header class="topbar">
-    <div>
-      <h1>Market Pulse</h1>
-      <p>Listings, changes, and trends from your Turso dataset.</p>
-    </div>
-    <div class="toolbar">
-      <button id="refreshButton" type="button">Refresh</button>
-      <span id="lastRefreshLabel">Waiting for first load...</span>
-    </div>
-  </header>
+<body class="bg-background text-on-surface selection:bg-primary/30 selection:text-primary">
+<header class="flex justify-between items-center w-full px-8 py-4 max-w-full sticky top-0 z-50 bg-zinc-900/60 backdrop-blur-xl shadow-[0_20px_40px_rgba(233,193,118,0.04)] font-manrope tracking-tight">
+  <div class="flex items-center gap-8">
+    <span class="text-2xl font-bold tracking-widest text-zinc-100 uppercase">Market Pulse</span>
+  </div>
+  <div class="flex items-center gap-4">
+    <span id="lastRefreshLabel" class="text-xs text-zinc-400">Waiting for first load...</span>
+    <button id="refreshButton" class="p-2 rounded-full hover:bg-zinc-800/50 transition-all duration-300 hover:-translate-y-0.5 active:scale-95 text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary">
+      <span class="material-symbols-outlined">refresh</span>
+    </button>
+  </div>
+</header>
 
-  <section class="filters">
-    <label>
-      Site
-      <select id="siteFilter">
-        <option value="">All sites</option>
-      </select>
-    </label>
-    <label>
-      Transaction
-      <select id="transactionFilter">
-        <option value="">Any</option>
-        <option value="sale">Sale</option>
-        <option value="rent">Rent</option>
-        <option value="unknown">Unknown</option>
-      </select>
-    </label>
-    <label>
-      Price min
-      <input id="priceMinFilter" type="number" min="0" step="1000" placeholder="0">
-    </label>
-    <label>
-      Price max
-      <input id="priceMaxFilter" type="number" min="0" step="1000" placeholder="900000">
-    </label>
-    <label>
-      Bedrooms
-      <input id="bedroomsFilter" type="number" min="0" max="20" step="1" placeholder="Any">
-    </label>
-    <label class="watch-toggle-wrap">
-      <input id="watchlistOnly" type="checkbox">
-      Watchlist only
-    </label>
-  </section>
+<div class="flex">
+  <main class="flex-1 p-8 space-y-8 max-w-[1600px] mx-auto">
+    <!-- Filters Section -->
+    <section class="bg-surface-container-low p-6 rounded-xl space-y-6">
+      <div class="flex flex-wrap items-end gap-6">
+        <div class="space-y-2">
+          <label class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Site</label>
+          <select id="siteFilter" class="bg-surface-container-high border-none text-on-surface rounded-lg pl-4 pr-10 py-2 w-48 focus:ring-1 focus:ring-primary outline-none">
+            <option value="">All Premium Sites</option>
+          </select>
+        </div>
+        <div class="space-y-2">
+          <label class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Transaction</label>
+          <select id="transactionFilter" class="bg-surface-container-high border-none text-on-surface rounded-lg pl-4 pr-10 py-2 w-48 focus:ring-1 focus:ring-primary outline-none">
+            <option value="">Any</option>
+            <option value="sale">Sale</option>
+            <option value="rent">Rent</option>
+            <option value="unknown">Unknown</option>
+          </select>
+        </div>
+        <div class="space-y-2">
+          <label class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Price Range ($)</label>
+          <div class="flex items-center gap-2">
+            <input id="priceMinFilter" class="w-32 bg-surface-container-high border-none rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" placeholder="0" type="number" min="0" step="1000"/>
+            <span class="text-zinc-600">—</span>
+            <input id="priceMaxFilter" class="w-32 bg-surface-container-high border-none rounded-lg px-3 py-2 text-sm focus:ring-1 focus:ring-primary outline-none" placeholder="900000" type="number" min="0" step="1000"/>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="text-xs font-semibold uppercase tracking-widest text-zinc-400">Beds / Baths</label>
+          <div class="flex gap-2">
+            <select id="bedroomsFilter" class="bg-surface-container-high border-none text-on-surface rounded-lg pl-3 pr-8 py-2 text-sm focus:ring-1 focus:ring-primary outline-none">
+              <option value="">Any</option>
+            </select>
+            <select id="bathroomsFilter" class="bg-surface-container-high border-none text-on-surface rounded-lg pl-3 pr-8 py-2 text-sm focus:ring-1 focus:ring-primary outline-none">
+              <option value="">Any</option>
+            </select>
+          </div>
+        </div>
+        <label class="flex items-center gap-3 cursor-pointer group mb-1 ml-auto">
+          <span class="text-xs font-semibold uppercase tracking-widest text-zinc-400 group-hover:text-zinc-200">Watchlist Only</span>
+          <div class="relative inline-flex items-center">
+            <input id="watchlistOnly" class="sr-only peer" type="checkbox"/>
+            <div class="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+          </div>
+        </label>
+      </div>
+    </section>
+    
+    <!-- Metric Cards -->
+    <section id="statsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="glass-panel p-6 rounded-xl border border-white/5 group hover:bg-surface-container-high transition-all">
+        <div class="flex justify-between items-start mb-4">
+          <span class="material-symbols-outlined text-primary text-3xl">home_work</span>
+          <span class="text-[10px] bg-primary/10 text-primary px-2 py-1 rounded-full font-bold uppercase tracking-tighter">Total</span>
+        </div>
+        <p class="text-zinc-400 text-sm font-medium mb-1">Active Listings</p>
+        <h3 id="statActive" class="text-3xl font-manrope font-bold text-on-surface">-</h3>
+      </div>
+      <div class="glass-panel p-6 rounded-xl border border-white/5 group hover:bg-surface-container-high transition-all">
+        <div class="flex justify-between items-start mb-4">
+          <span class="material-symbols-outlined text-secondary text-3xl">fiber_new</span>
+          <span class="text-[10px] bg-secondary/10 text-secondary px-2 py-1 rounded-full font-bold uppercase tracking-tighter">New</span>
+        </div>
+        <p class="text-zinc-400 text-sm font-medium mb-1">New In Latest Run</p>
+        <h3 id="statNew" class="text-3xl font-manrope font-bold text-on-surface">-</h3>
+      </div>
+      <div class="glass-panel p-6 rounded-xl border border-white/5 group hover:bg-surface-container-high transition-all">
+        <div class="flex justify-between items-start mb-4">
+          <span class="material-symbols-outlined text-yellow-500 text-3xl">trending_up</span>
+          <span class="text-[10px] bg-yellow-500/10 text-yellow-500 px-2 py-1 rounded-full font-bold uppercase tracking-tighter">Delta</span>
+        </div>
+        <p class="text-zinc-400 text-sm font-medium mb-1">Changed Listings</p>
+        <h3 id="statChanged" class="text-3xl font-manrope font-bold text-on-surface">-</h3>
+      </div>
+      <div class="glass-panel p-6 rounded-xl border border-white/5 group hover:bg-surface-container-high transition-all">
+        <div class="flex justify-between items-start mb-4">
+          <span class="material-symbols-outlined text-error text-3xl">close_fullscreen</span>
+          <span class="text-[10px] bg-error/10 text-error px-2 py-1 rounded-full font-bold uppercase tracking-tighter">Del</span>
+        </div>
+        <p class="text-zinc-400 text-sm font-medium mb-1">Removed Listings</p>
+        <h3 id="statRemoved" class="text-3xl font-manrope font-bold text-on-surface">-</h3>
+      </div>
+    </section>
+    
+    <!-- Charts Section -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div class="bg-surface-container-low p-8 rounded-xl space-y-6 border border-white/5 shadow-lg">
+        <div class="flex flex-wrap justify-between items-start gap-4">
+          <div>
+            <h4 class="font-manrope text-lg font-bold">Average Price Over Time</h4>
+            <p class="text-xs text-zinc-500 mt-1">Trend based on average listing price per run.</p>
+          </div>
+          <div class="text-right min-w-[170px]">
+            <p class="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Current Avg</p>
+            <p id="avgCurrentValue" class="font-manrope text-3xl lg:text-4xl font-extrabold text-primary leading-tight mt-1">-</p>
+            <div class="flex justify-end gap-2 items-center mt-2">
+              <span class="w-3 h-3 rounded-full bg-primary inline-block"></span>
+              <span class="text-xs text-zinc-400">Market Avg</span>
+            </div>
+          </div>
+        </div>
+        <canvas id="avgChart" width="900" height="260" class="w-full"></canvas>
+      </div>
+      <div class="bg-surface-container-low p-8 rounded-xl space-y-6 border border-white/5 shadow-lg">
+        <div class="flex justify-between items-center">
+          <h4 class="font-manrope text-lg font-bold">Current Price Histogram</h4>
+        </div>
+        <p id="histSummaryLabel" class="text-sm text-zinc-400">Each bar shows how many listings are inside a price range.</p>
+        <canvas id="histChart" width="900" height="260" class="w-full"></canvas>
+      </div>
+    </section>
+    
+    <!-- Map View Section -->
+    <section class="h-[400px] bg-surface-container-low rounded-xl overflow-hidden relative group border border-white/5 shadow-lg isolate">
+      <div id="map" class="absolute inset-0 z-10 !bg-transparent"></div>
+      <div class="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent pointer-events-none z-20"></div>
+    </section>
+    
+    <!-- Listings Table -->
+    <section class="bg-surface-container-low rounded-xl border border-white/5 shadow-lg">
+      <div class="p-6 border-b border-white/5 flex justify-between items-center">
+        <h4 class="font-manrope text-xl font-bold">Current Listings</h4>
+      </div>
+      <div class="overflow-x-auto p-0">
+        <table class="w-full text-left">
+          <thead class="bg-zinc-900/50 text-zinc-300 uppercase text-[10px] font-bold tracking-widest cursor-pointer select-none">
+            <tr>
+              <th class="px-6 py-4 w-10">Watch</th>
+              <th class="px-6 py-4 hover:text-white transition-colors" data-sort="site">Site</th>
+              <th class="px-6 py-4">Title</th>
+              <th class="px-6 py-4 hover:text-white transition-colors" data-sort="location">Location</th>
+              <th class="px-6 py-4 hover:text-white transition-colors text-right" data-sort="price_num">Price</th>
+              <th class="px-6 py-4">Size</th>
+              <th class="px-6 py-4">Beds</th>
+              <th class="px-6 py-4">Baths</th>
+              <th class="px-6 py-4 hover:text-white transition-colors" data-sort="first_seen">First Seen</th>
+              <th class="px-6 py-4 text-center">Price Trend</th>
+              <th class="px-6 py-4 text-center">Detail</th>
+            </tr>
+          </thead>
+          <tbody id="listingsBody" class="divide-y divide-white/5"></tbody>
+        </table>
+      </div>
+    </section>
+    
+    <!-- Change Log Section -->
+    <section class="bg-surface-container-low rounded-xl p-8 space-y-6 border border-white/5 shadow-lg">
+      <h4 class="font-manrope text-xl font-bold border-b border-white/5 pb-4">Activity Stream</h4>
+      <ul id="changeLog" class="space-y-4 m-0 p-0 overflow-y-auto max-h-[500px] pr-2"></ul>
+    </section>
+  </main>
+</div>
 
-  <section class="stats-grid" id="statsGrid">
-    <article class="stat-card">
-      <h2>Active Listings</h2>
-      <p id="statActive">-</p>
-    </article>
-    <article class="stat-card">
-      <h2>New In Latest Run</h2>
-      <p id="statNew">-</p>
-    </article>
-    <article class="stat-card">
-      <h2>Changed In Latest Run</h2>
-      <p id="statChanged">-</p>
-    </article>
-    <article class="stat-card">
-      <h2>Removed In Latest Run</h2>
-      <p id="statRemoved">-</p>
-    </article>
-  </section>
+<div class="fixed top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+<div class="fixed bottom-0 left-0 w-[400px] h-[400px] bg-secondary/5 rounded-full blur-[100px] pointer-events-none -z-10"></div>
 
-  <section class="charts-grid">
-    <article class="panel">
-      <h2>Average Price Over Time</h2>
-      <canvas id="avgChart" width="900" height="260"></canvas>
-    </article>
-    <article class="panel">
-      <h2>Current Price Histogram</h2>
-      <canvas id="histChart" width="900" height="260"></canvas>
-    </article>
-  </section>
-
-  <section class="panel">
-    <h2>Map View</h2>
-    <p class="small">Locations are geocoded from listing text with local browser caching.</p>
-    <div id="map"></div>
-  </section>
-
-  <section class="panel">
-    <h2>Current Listings</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Watch</th>
-            <th data-sort="site">Site</th>
-            <th>Title</th>
-            <th data-sort="location">Location</th>
-            <th data-sort="price_num">Price</th>
-            <th>Bedrooms</th>
-            <th data-sort="first_seen">First Seen</th>
-            <th>Price Trend</th>
-            <th>Detail</th>
-          </tr>
-        </thead>
-        <tbody id="listingsBody"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Change Log</h2>
-    <ul id="changeLog" class="change-log"></ul>
-  </section>
-
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
-  <script src="/app.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="/app.js"></script>
 </body>
 </html>
