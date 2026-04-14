@@ -83,29 +83,77 @@ function parsePriceFromText(rawPrice) {
   return Math.round(parsed);
 }
 
-function normalizePriceNumber(rawPriceNum, rawPriceText) {
+function normalizePriceNumber(rawPriceNum) {
   const direct = toNumber(rawPriceNum, null);
-  if (direct !== null && direct >= 1000 && direct <= 5000000) {
-    return Math.round(direct);
+  if (direct === null) {
+    return null;
   }
 
-  const parsed = parsePriceFromText(rawPriceText);
-  if (parsed !== null && parsed >= 1000 && parsed <= 5000000) {
-    return parsed;
+  const rounded = Math.round(direct);
+  if (rounded <= 0 || rounded > 50000000) {
+    return null;
   }
 
-  return null;
+  return rounded;
+}
+
+function isUsablePriceNumber(value) {
+  return Number.isFinite(value) && value > 0 && value <= 50000000;
 }
 
 function inferTransactionType(source) {
   const text = String(source || '').toLowerCase();
-  if (/\b(alquiler|rent|to let|arrenda)\b/.test(text)) {
-    return 'rent';
-  }
-  if (/\b(venta|sale|for sale|vender)\b/.test(text)) {
+  const hasRent = /\b(alquiler|en alquiler|rent|to let|arrenda)\b|\/alquiler\b|-en-alquiler-|\/(?:\s*)mes\b/.test(text);
+  const hasSale = /\b(venta|en venta|sale|for sale|vender|vendido|vendida|se vende|compra|comprar)\b|\/compra\b|-en-venta-|\bventas\b/.test(text);
+
+  if (hasSale && !hasRent) {
     return 'sale';
   }
+  if (hasRent && !hasSale) {
+    return 'rent';
+  }
+  if (hasSale && hasRent) {
+    return 'mixed';
+  }
   return 'unknown';
+}
+
+function resolveTransactionType(rawTransactionType, source, priceNum, rawPrice) {
+  const inferred = inferTransactionType(source);
+  const dbTransactionType = normalizeTransactionTypeFilter(rawTransactionType);
+  const sourceText = String(source || '').toLowerCase();
+  const rawPriceText = String(rawPrice || '').toLowerCase();
+  const hasMonthlyMarker = /\/(?:\s*)mes\b|mensual|month/.test(rawPriceText);
+
+  if (inferred === 'sale' || inferred === 'rent') {
+    return inferred;
+  }
+
+  if (inferred === 'mixed') {
+    const hasStrongSaleMarker = /\b(vendid[oa]|se vende|en venta|compra|comprar)\b/.test(sourceText);
+    if (hasMonthlyMarker) {
+      return 'rent';
+    }
+    if (hasStrongSaleMarker) {
+      return 'sale';
+    }
+    if (priceNum !== null && priceNum >= 10000) {
+      return 'sale';
+    }
+    return dbTransactionType || 'unknown';
+  }
+
+  // If DB says rent but there is no rent marker and the amount is sale-like, force sale.
+  if (dbTransactionType === 'rent' && !hasMonthlyMarker) {
+    if (priceNum !== null && priceNum >= 10000) {
+      return 'sale';
+    }
+    if (/precio\s*a\s*consultar/.test(rawPriceText)) {
+      return 'unknown';
+    }
+  }
+
+  return dbTransactionType || 'unknown';
 }
 
 function inferBedrooms(source) {
@@ -177,10 +225,13 @@ function buildListingFromRow(row) {
   const detailUrl = String(readRowField(row, 'detailUrl', 6, ''));
   const rawPrice = String(readRowField(row, 'price', 4, ''));
   const rawPriceNum = readRowField(row, 'price_num', 5, null);
+  const description = String(readRowField(row, 'description', 7, ''));
+  const priceNum = normalizePriceNumber(rawPriceNum);
   const size = String(readRowField(row, 'size', 9, '') || '').trim();
-  const dbTransactionType = normalizeTransactionTypeFilter(readRowField(row, 'transactionType', 10, ''));
-  const dbBedrooms = normalizeFeatureCount(readRowField(row, 'bedrooms', 11, null));
-  const dbBathrooms = normalizeFeatureCount(readRowField(row, 'bathrooms', 12, null));
+  const dbTransactionType = normalizeTransactionTypeFilter(readRowField(row, 'transactionType', 11, ''));
+  const dbBedrooms = normalizeFeatureCount(readRowField(row, 'bedrooms', 12, null));
+  const dbBathrooms = normalizeFeatureCount(readRowField(row, 'bathrooms', 13, null));
+  const transactionSource = `${title} ${location} ${detailUrl} ${rawPrice} ${description}`;
 
   return {
     siteId: String(readRowField(row, 'siteId', 0, '')),
@@ -188,15 +239,57 @@ function buildListingFromRow(row) {
     title,
     location,
     price: rawPrice,
-    priceNum: normalizePriceNumber(rawPriceNum, rawPrice),
+    priceNum,
     size,
     detailUrl,
     firstSeen: String(readRowField(row, 'first_seen', 7, '')),
     lastSeen: String(readRowField(row, 'last_seen', 8, '')),
-    transactionType: dbTransactionType || inferTransactionType(`${title} ${location} ${detailUrl}`),
+    transactionType: resolveTransactionType(dbTransactionType, transactionSource, priceNum, rawPrice),
     bedrooms: dbBedrooms !== null ? dbBedrooms : inferBedrooms(title),
     bathrooms: dbBathrooms,
   };
+}
+
+function buildSnapshotListingFromRow(row) {
+  const title = String(readRowField(row, 'title', 2, ''));
+  const location = String(readRowField(row, 'location', 3, ''));
+  const detailUrl = String(readRowField(row, 'detailUrl', 6, ''));
+  const rawPrice = String(readRowField(row, 'price', 4, ''));
+  const rawPriceNum = readRowField(row, 'price_num', 5, null);
+  const description = String(readRowField(row, 'description', 7, ''));
+  const priceNum = normalizePriceNumber(rawPriceNum);
+  const dbTransactionType = normalizeTransactionTypeFilter(readRowField(row, 'transactionType', 8, ''));
+  const dbBedrooms = normalizeFeatureCount(readRowField(row, 'bedrooms', 9, null));
+  const dbBathrooms = normalizeFeatureCount(readRowField(row, 'bathrooms', 10, null));
+  const transactionSource = `${title} ${location} ${detailUrl} ${rawPrice} ${description}`;
+
+  return {
+    runId: toNumber(readRowField(row, 'run_id', 0, 0), 0),
+    siteId: String(readRowField(row, 'siteId', 1, '')),
+    priceNum,
+    bedrooms: dbBedrooms,
+    bathrooms: dbBathrooms,
+    transactionType: resolveTransactionType(dbTransactionType, transactionSource, priceNum, rawPrice),
+  };
+}
+
+function listingMatchesFilters(item, filters) {
+  if (filters.txType && item.transactionType !== filters.txType) {
+    return false;
+  }
+  if (filters.priceMin !== null && (item.priceNum === null || item.priceNum < filters.priceMin)) {
+    return false;
+  }
+  if (filters.priceMax !== null && (item.priceNum === null || item.priceNum > filters.priceMax)) {
+    return false;
+  }
+  if (filters.bedrooms !== null && item.bedrooms !== filters.bedrooms) {
+    return false;
+  }
+  if (filters.bathrooms !== null && item.bathrooms !== filters.bathrooms) {
+    return false;
+  }
+  return true;
 }
 
 function sortListings(items, sortBy, sortDir) {
@@ -386,6 +479,7 @@ async function startDashboardServer(options = {}) {
           price,
           price_num,
           detailUrl,
+          description,
           first_seen,
           last_seen,
           size,
@@ -526,43 +620,66 @@ async function startDashboardServer(options = {}) {
       const priceMax = toNumber(req.query.priceMax, null);
       const bedrooms = normalizeFeatureCount(req.query.bedrooms);
       const bathrooms = normalizeFeatureCount(req.query.bathrooms);
+
+      const listingFilters = {
+        txType,
+        priceMin,
+        priceMax,
+        bedrooms,
+        bathrooms,
+      };
+
+      // When transaction filter is "Any", keep price visuals focused on sale values
+      // to avoid mixing monthly rents with sale prices.
+      const visualListingFilters = {
+        ...listingFilters,
+        txType: txType || 'sale',
+      };
+
       const activeArgs = [];
       const activeWhere = ['is_active = 1'];
       if (site) {
         activeWhere.push('siteId = ?');
         activeArgs.push(site);
       }
-      if (txType) {
-        activeWhere.push('transactionType = ?');
-        activeArgs.push(txType);
-      }
-      if (priceMin !== null) {
-        activeWhere.push('price_num >= ?');
-        activeArgs.push(priceMin);
-      }
-      if (priceMax !== null) {
-        activeWhere.push('price_num <= ?');
-        activeArgs.push(priceMax);
-      }
-      if (bedrooms !== null) {
-        activeWhere.push('bedrooms = ?');
-        activeArgs.push(bedrooms);
-      }
-      if (bathrooms !== null) {
-        activeWhere.push('bathrooms = ?');
-        activeArgs.push(bathrooms);
-      }
 
-      const activeResult = await client.execute({
+      const activeRowsResult = await client.execute({
         sql: `
           SELECT
-            COUNT(*) AS active_count,
-            AVG(CASE WHEN price_num BETWEEN 1000 AND 5000000 THEN price_num END) AS avg_price
+            siteId,
+            listing_id,
+            title,
+            location,
+            price,
+            price_num,
+            detailUrl,
+            description,
+            first_seen,
+            last_seen,
+            size,
+            transactionType,
+            bedrooms,
+            bathrooms
           FROM listings_current
           WHERE ${activeWhere.join(' AND ')}
         `,
         args: activeArgs,
       });
+
+      const filteredActiveListings = activeRowsResult.rows
+        .map(buildListingFromRow)
+        .filter((item) => listingMatchesFilters(item, listingFilters));
+
+      const visualActiveListings = filteredActiveListings
+        .filter((item) => listingMatchesFilters(item, visualListingFilters));
+
+      const activePrices = visualActiveListings
+        .map((item) => item.priceNum)
+        .filter((value) => isUsablePriceNumber(value));
+
+      const avgPriceCurrent = activePrices.length
+        ? Math.round(activePrices.reduce((acc, value) => acc + value, 0) / activePrices.length)
+        : null;
 
       const latestRunResult = await client.execute({
         sql: site
@@ -614,67 +731,89 @@ async function startDashboardServer(options = {}) {
         }
       }
 
-      const timelineResult = await client.execute({
+      const timelineRunsResult = await client.execute({
         sql: `
           SELECT
-            s.run_id,
+            r.run_id,
             r.siteId,
             r.started_at,
-            r.finished_at,
-            AVG(s.price_num) AS avg_price,
-            COUNT(*) AS sample_size
-          FROM listings_snapshot s
-          JOIN scrape_runs r ON r.run_id = s.run_id
-          WHERE s.price_num BETWEEN 1000 AND 5000000
+            r.finished_at
+          FROM scrape_runs r
+          WHERE 1 = 1
           ${site ? 'AND r.siteId = ?' : ''}
-          ${txType ? 'AND s.transactionType = ?' : ''}
-          ${priceMin !== null ? 'AND s.price_num >= ?' : ''}
-          ${priceMax !== null ? 'AND s.price_num <= ?' : ''}
-          ${bedrooms !== null ? 'AND s.bedrooms = ?' : ''}
-          ${bathrooms !== null ? 'AND s.bathrooms = ?' : ''}
-          GROUP BY s.run_id, r.siteId, r.started_at, r.finished_at
-          ORDER BY s.run_id DESC
+          ORDER BY r.run_id DESC
           LIMIT 48
         `,
-        args: [
-          ...(site ? [site] : []),
-          ...(txType ? [txType] : []),
-          ...(priceMin !== null ? [priceMin] : []),
-          ...(priceMax !== null ? [priceMax] : []),
-          ...(bedrooms !== null ? [bedrooms] : []),
-          ...(bathrooms !== null ? [bathrooms] : []),
-        ],
+        args: site ? [site] : [],
       });
 
-      const timeline = timelineResult.rows
-        .map((row) => ({
-          runId: toNumber(readRowField(row, 'run_id', 0, 0), 0),
-          siteId: String(readRowField(row, 'siteId', 1, '')),
-          startedAt: String(readRowField(row, 'started_at', 2, '')),
-          finishedAt: String(readRowField(row, 'finished_at', 3, '')),
-          avgPrice: toNumber(readRowField(row, 'avg_price', 4, null), null),
-          sampleSize: toNumber(readRowField(row, 'sample_size', 5, 0), 0),
-        }))
-        .reverse();
+      const runRows = timelineRunsResult.rows.map((row) => ({
+        runId: toNumber(readRowField(row, 'run_id', 0, 0), 0),
+        siteId: String(readRowField(row, 'siteId', 1, '')),
+        startedAt: String(readRowField(row, 'started_at', 2, '')),
+        finishedAt: String(readRowField(row, 'finished_at', 3, '')),
+      }));
 
-      const histogramResult = await client.execute({
-        sql: `
-          SELECT price_num
-          FROM listings_current
-          WHERE ${activeWhere.join(' AND ')}
-            AND price_num BETWEEN ? AND ?
-        `,
-        args: [...activeArgs, PRICE_NUM_MIN, PRICE_NUM_MAX],
-      });
+      const runIds = runRows.map((run) => run.runId).filter((value) => value > 0);
+      let timeline = [];
 
-      const prices = histogramResult.rows
-        .map((row) => toNumber(readRowField(row, 'price_num', 0, null), null))
-        .filter((value) => value !== null);
+      if (runIds.length > 0) {
+        const placeholders = runIds.map(() => '?').join(', ');
+        const snapshotsResult = await client.execute({
+          sql: `
+            SELECT
+              run_id,
+              siteId,
+              title,
+              location,
+              price,
+              price_num,
+              detailUrl,
+              description,
+              transactionType,
+              bedrooms,
+              bathrooms
+            FROM listings_snapshot
+            WHERE run_id IN (${placeholders})
+          `,
+          args: runIds,
+        });
 
-      const activeRow = activeResult.rows[0] || {};
+        const byRun = new Map();
+        for (const row of snapshotsResult.rows) {
+          const item = buildSnapshotListingFromRow(row);
+          if (!listingMatchesFilters(item, visualListingFilters)) {
+            continue;
+          }
+          if (!isUsablePriceNumber(item.priceNum)) {
+            continue;
+          }
+
+          const bucket = byRun.get(item.runId) || { sum: 0, count: 0 };
+          bucket.sum += item.priceNum;
+          bucket.count += 1;
+          byRun.set(item.runId, bucket);
+        }
+
+        timeline = runRows
+          .slice()
+          .reverse()
+          .map((run) => {
+            const bucket = byRun.get(run.runId);
+            return {
+              runId: run.runId,
+              siteId: run.siteId,
+              startedAt: run.startedAt,
+              finishedAt: run.finishedAt,
+              avgPrice: bucket && bucket.count ? Math.round(bucket.sum / bucket.count) : null,
+              sampleSize: bucket ? bucket.count : 0,
+            };
+          });
+      }
+
       res.json({
-        totalActive: toNumber(readRowField(activeRow, 'active_count', 0, 0), 0),
-        avgPriceCurrent: toNumber(readRowField(activeRow, 'avg_price', 1, null), null),
+        totalActive: filteredActiveListings.length,
+        avgPriceCurrent,
         latestRun: latestRun
           ? {
             runId: toNumber(readRowField(latestRun, 'run_id', 0, 0), 0),
@@ -687,7 +826,7 @@ async function startDashboardServer(options = {}) {
           : null,
         latestRunChanges,
         avgPriceTimeline: timeline,
-        priceHistogram: computeHistogram(prices),
+        priceHistogram: computeHistogram(activePrices),
       });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
@@ -729,7 +868,7 @@ async function startDashboardServer(options = {}) {
 
         histories[key].push({
           runId: toNumber(readRowField(row, 'run_id', 2, 0), 0),
-          priceNum: normalizePriceNumber(readRowField(row, 'price_num', 3, null), readRowField(row, 'price', 4, '')),
+          priceNum: normalizePriceNumber(readRowField(row, 'price_num', 3, null)),
           price: String(readRowField(row, 'price', 4, '')),
           scrapedAt: String(readRowField(row, 'scrapedAt', 5, '')),
         });

@@ -2,13 +2,13 @@
 
 ## Live Dashboard
 
-## [Open the live dashboard](https://yourname.eus)
+## [gaise.haritzeizagirre.eus](https://gaise.haritzeizagirre.eus)
 
 ## Deployment Architecture
 
-This project is deployed on an Azure VM and exposed through Nginx with HTTPS certificates from Certbot. Data is stored in Turso, while background scraping jobs are automated with cron/systemd.
+This project is deployed on an AWS VM and exposed through Nginx with HTTPS certificates from Certbot. Data is stored in Turso, while background scraping jobs are automated with cron/systemd.
 
-- Azure VM (Ubuntu): host machine for the Node.js app and scraper processes.
+- AWS VM (Ubuntu Server 24.04 LTS): host machine for the Node.js app and scraper processes.
 - Nginx: reverse proxy from ports 80/443 to the local dashboard server.
 - Certbot: TLS certificate issuance and automatic renewal.
 - Turso: serverless SQL backend for listings, snapshots, runs, and change history.
@@ -17,27 +17,31 @@ This project is deployed on an Azure VM and exposed through Nginx with HTTPS cer
 
 ## Extra Features Beyond Base Milestones
 
-- Multi-source scraping with several adapters, including an additional `3hiruhome` adapter.
+- Multi-source scraping with several adapters (one for each real estate website).
 - Scheduled execution support with cron expressions from CLI or environment variables.
 - Optional health endpoint for monitoring run status.
 - Enriched listing schema (reference, description, transaction type, size, bedrooms, bathrooms, garages, image URL).
 - Improved Telegram notification formatting to avoid broken HTML parse errors.
 - Interactive dashboard map/geocoding support for location-based exploration.
+- Improved UI using Stitch MCP Server in Antigravity code editor.
 
-## Live Dashboard Screenshots (Optional)
+## Live Dashboard Screenshots
 
-You can add screenshots here to document the final deployed UI:
+Deployed UI preview:
 
-![Dashboard overview](./screenshots/dashboard-overview.png)
-![Dashboard detail view](./screenshots/dashboard-detail.png)
+![Dashboard screenshot 1](screenshots/screenshot1.png)
+![Dashboard screenshot 2](screenshots/screenshot2.png)
+![Dashboard screenshot 3](screenshots/screenshot3.png)
+![Dashboard screenshot 4](screenshots/screenshot4.png)
 
-If these files do not exist yet, create them in a `screenshots/` folder and keep the same names.
+## Issues During Deployment 
+
+- I was not able to create a VM on Azure due to region issues so I created the VM on AWS.
+- Qwen Code got crashed all the time so I had to do it all manually.
 
 ## Lessons Learned During Deployment
 
-- Reverse-proxy and app-port mismatches are a common source of downtime; validating Nginx upstream config early saves time.
-- Certificate management is simple once automated, but the initial DNS and firewall setup can be error-prone.
-- Process supervision matters: systemd restart policies prevent silent service failures.
-- Scheduling strategy should be explicit: use cron jobs for predictable intervals or a persistent scheduler service, but avoid overlapping runs.
-- Production observability is essential; adding health checks and logs made debugging deployment issues much faster.
-- Schema evolution in Turso requires planned migrations to keep historical data consistent.
+- Running the app as systemd services instead of having to use other tools for it (PM2 for example).
+- Setting up scheduled scraping to have the scraper running each 30 minutes.
+- The possibility to use tools like Qwen Code on VMs (even though it wasn't working properly this time).
+

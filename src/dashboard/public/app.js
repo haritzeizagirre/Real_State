@@ -473,7 +473,7 @@ function renderListingsTable(items) {
       <td class="px-6 py-4 text-sm text-zinc-400 font-semibold">${formatSiteName(item.siteId)}</td>
       <td class="px-6 py-4 text-sm text-zinc-400 font-semibold">${item.title || '-'}</td>
       <td class="px-6 py-4 text-sm text-zinc-400">${item.location || '-'}</td>
-      <td class="px-6 py-4 text-right font-manrope text-on-surface font-bold text-sm">${item.price || euro(item.priceNum)}</td>
+      <td class="px-6 py-4 text-right font-manrope text-on-surface font-bold text-sm">${euro(item.priceNum)}</td>
       <td class="px-6 py-4 text-sm text-zinc-400">${item.size || '-'}</td>
       <td class="px-6 py-4 text-sm text-zinc-400">${item.bedrooms == null ? '-' : item.bedrooms}</td>
       <td class="px-6 py-4 text-sm text-zinc-400">${item.bathrooms == null ? '-' : item.bathrooms}</td>
@@ -656,7 +656,7 @@ async function renderMap(items) {
     points.push([coords.lat, coords.lng]);
     const marker = L.marker([coords.lat, coords.lng]);
     const detailLink = item.detailUrl ? `<a href="${item.detailUrl}" target="_blank" rel="noreferrer">Open listing</a>` : 'No URL';
-    marker.bindPopup(`<strong>${item.title || item.listingId}</strong><br>${item.location}<br>${item.price || euro(item.priceNum)}<br>${detailLink}`);
+    marker.bindPopup(`<strong>${item.title || item.listingId}</strong><br>${item.location}<br>${euro(item.priceNum)}<br>${detailLink}`);
     marker.addTo(state.markerLayer);
   }
 
