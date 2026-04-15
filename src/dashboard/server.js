@@ -227,7 +227,7 @@ function buildListingFromRow(row) {
   const rawPriceNum = readRowField(row, 'price_num', 5, null);
   const description = String(readRowField(row, 'description', 7, ''));
   const priceNum = normalizePriceNumber(rawPriceNum);
-  const size = String(readRowField(row, 'size', 9, '') || '').trim();
+  const size = String(readRowField(row, 'size', 10, '') || '').trim();
   const dbTransactionType = normalizeTransactionTypeFilter(readRowField(row, 'transactionType', 11, ''));
   const dbBedrooms = normalizeFeatureCount(readRowField(row, 'bedrooms', 12, null));
   const dbBathrooms = normalizeFeatureCount(readRowField(row, 'bathrooms', 13, null));
@@ -242,8 +242,8 @@ function buildListingFromRow(row) {
     priceNum,
     size,
     detailUrl,
-    firstSeen: String(readRowField(row, 'first_seen', 7, '')),
-    lastSeen: String(readRowField(row, 'last_seen', 8, '')),
+    firstSeen: String(readRowField(row, 'first_seen', 8, '')),
+    lastSeen: String(readRowField(row, 'last_seen', 9, '')),
     transactionType: resolveTransactionType(dbTransactionType, transactionSource, priceNum, rawPrice),
     bedrooms: dbBedrooms !== null ? dbBedrooms : inferBedrooms(title),
     bathrooms: dbBathrooms,
