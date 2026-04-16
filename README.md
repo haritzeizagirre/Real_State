@@ -76,14 +76,13 @@ Common adapter behavior:
 
 ### Dashboard (live domain)
 
-![Dashboard screenshot 1](screenshots/screenshot1.png)
-![Dashboard screenshot 2](screenshots/screenshot2.png)
-![Dashboard screenshot 3](screenshots/screenshot3.png)
-![Dashboard screenshot 4](screenshots/screenshot4.png)
+![Dashboard screenshot 1](screenshots/screenshots1.png)
+![Dashboard screenshot 2](screenshots/screenshots2.png)
+![Dashboard screenshot 3](screenshots/screenshots3.png)
+![Dashboard screenshot 4](screenshots/screenshots4.png)
 
 ### Telegram Bot Alerts (optional milestone)
 
-If Milestone 4 is evaluated, add at least one screenshot showing a real alert received in Telegram.
 
 ![Telegram screenshot 1](screenshots/screenshot_tg1.jpg)
 ![Telegram screenshot 2](screenshots/screenshot_tg2.jpg)
@@ -92,16 +91,13 @@ If Milestone 4 is evaluated, add at least one screenshot showing a real alert re
 ## 6) Problems Encountered
 
 - Azure VM provisioning issue (region constraints), so deployment was moved to AWS.
-- AI tooling instability on VM during setup, requiring manual completion of deployment steps.
+- AI tooling (Qwen Code) instability on VM during setup, requiring manual completion of deployment steps.
 - Real-estate sites have inconsistent HTML structures, so adapters needed robust fallback selectors and normalization logic.
-- [FILL IN ANY OTHER REAL ISSUE YOU FACED: rate limits, bot protection, DNS propagation, etc.]
+
 
 ## 7) Additional Comments
 
-- The architecture is intentionally modular: adding a new site only requires implementing a new adapter and registering it.
-- Monitoring is audit-oriented: each run is traceable through snapshots and structured diffs.
-- Dashboard is read-only by design and does not trigger scrapes, which keeps responsibilities separated.
-- [FILL IN: any extra features you want to highlight to improve exam-exemption review]
+- It was so difficult to make an adapter to scrap all the info correctly on some websites especially in data such as the number of bedrooms or bathrooms due to the inconsistency of the data in those websites.
 
 ## 8) Deployment Architecture
 

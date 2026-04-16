@@ -327,6 +327,19 @@ async function createListingsStore(options = {}) {
     });
   }
 
+  async function closeOpenPartialRuns(siteId, finishedAt) {
+    await client.execute({
+      sql: `
+        UPDATE scrape_runs
+        SET finished_at = ?, status = 'failed'
+        WHERE siteId = ?
+          AND status = 'partial'
+          AND finished_at IS NULL
+      `,
+      args: [finishedAt, siteId],
+    });
+  }
+
   async function writeSnapshots(runId, rows) {
     for (const row of rows) {
       await client.execute({
@@ -576,6 +589,7 @@ async function createListingsStore(options = {}) {
 
       let runId;
       try {
+        await closeOpenPartialRuns(siteId, startedAt);
         runId = await createRun(siteId, startedAt, 'partial', null, 0);
 
         await writeSnapshots(runId, normalizedListings);
