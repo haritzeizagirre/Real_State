@@ -90,8 +90,8 @@ Common adapter behavior:
 - I improved the dashboard website's UI using Stitch MCP on Antigravity and also 
 making it responsive so that it can be used on devices such as mobile phones.
 
-![responsive screenshot 1](screenshots/screenshot_mb1.png)
-![responsive screenshot 1](screenshots/screenshot_mb2.png)
+![responsive screenshot 1](screenshots/screenshot_mb1.jpg)
+![responsive screenshot 1](screenshots/screenshot_mb2.jpg)
 
 ## Deployment Architecture
 
