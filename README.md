@@ -63,10 +63,11 @@ Common adapter behavior:
 
 ### Dashboard (live domain)
 
-![Dashboard screenshot 1](screenshots/screenshots1.png)
-![Dashboard screenshot 2](screenshots/screenshots2.png)
-![Dashboard screenshot 3](screenshots/screenshots3.png)
-![Dashboard screenshot 4](screenshots/screenshots4.png)
+![Dashboard screenshot 1](screenshots/screenshot1.png)
+![Dashboard screenshot 2](screenshots/screenshot2.png)
+![Dashboard screenshot 3](screenshots/screenshot3.png)
+![Dashboard screenshot 4](screenshots/screenshot4.png)
+![Dashboard screenshot 5](screenshots/screenshot5.png)
 
 ### Telegram Bot Alerts 
 
@@ -88,6 +89,9 @@ Common adapter behavior:
 - It was so difficult to make an adapter to scrap all the info correctly on some websites especially in data such as the number of bedrooms or bathrooms due to the inconsistency of the data in those websites.
 - I improved the dashboard website's UI using Stitch MCP on Antigravity and also 
 making it responsive so that it can be used on devices such as mobile phones.
+
+![responsive screenshot 1](screenshots/screenshot_mb1.png)
+![responsive screenshot 1](screenshots/screenshot_mb2.png)
 
 ## Deployment Architecture
 
