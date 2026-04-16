@@ -426,8 +426,8 @@ const threeHiruHomeAdapter = {
   async list(params = {}) {
     const headless = params.headless !== false;
     const operation = clean(params.operation || 'all');
-    const maxPages = Number.isFinite(Number(params.maxPages)) ? Math.max(1, Number(params.maxPages)) : 4;
-    const maxCategoryUrls = Number.isFinite(Number(params.maxCategoryUrls)) ? Math.max(1, Number(params.maxCategoryUrls)) : 24;
+    const maxPages = Number.isFinite(Number(params.maxPages)) ? Math.max(1, Number(params.maxPages)) : 12;
+    const maxCategoryUrls = Number.isFinite(Number(params.maxCategoryUrls)) ? Math.max(1, Number(params.maxCategoryUrls)) : 60;
     const detailEnrichment = params.detailEnrichment === true;
     const maxDetailListings = Number.isFinite(Number(params.maxDetailListings)) ? Math.max(0, Number(params.maxDetailListings)) : 60;
 

@@ -311,8 +311,8 @@ const iparraldeAdapter = {
    * @param {{propertyType?: string, municipality?: string, maxPages?: number, headless?: boolean}} params
    */
   async list(params = {}) {
-    const propertyType = clean(params.propertyType || 'piso');
-    const municipality = clean(params.municipality || 'Hendaye');
+    const propertyType = clean(params.propertyType || '');
+    const municipality = clean(params.municipality || '');
     const maxPages = Number.isFinite(Number(params.maxPages)) ? Number(params.maxPages) : 25;
     const detailEnrichment = params.detailEnrichment !== false;
     const maxDetailListings = Number.isFinite(Number(params.maxDetailListings)) ? Math.max(0, Number(params.maxDetailListings)) : 60;
@@ -327,8 +327,12 @@ const iparraldeAdapter = {
       await page.waitForTimeout(2000);
 
       const searchForm = page.locator('form.findus').first();
-      await searchForm.locator('select[name="tipoInmueble[]"]').selectOption(propertyType);
-      await searchForm.locator('select[name="municipio[]"]').selectOption(municipality);
+      if (propertyType) {
+        await searchForm.locator('select[name="tipoInmueble[]"]').selectOption(propertyType);
+      }
+      if (municipality) {
+        await searchForm.locator('select[name="municipio[]"]').selectOption(municipality);
+      }
 
       await Promise.all([
         page.waitForLoadState('domcontentloaded'),

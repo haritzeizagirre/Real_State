@@ -1,3 +1,11 @@
+const SECTION_VISIBILITY_DEFAULTS = {
+  stats: true,
+  charts: true,
+  map: true,
+  listings: true,
+  activity: true,
+};
+
 const state = {
   filters: {
     site: '',
@@ -13,8 +21,10 @@ const state = {
     dir: 'desc',
   },
   listings: [],
+  summary: null,
   watchlist: loadWatchlist(),
   geocodeCache: loadGeocodeCache(),
+  sectionVisibility: loadSectionVisibility(),
   map: null,
   markerLayer: null,
 };
@@ -29,6 +39,12 @@ const elements = {
   bedroomsFilter: document.getElementById('bedroomsFilter'),
   bathroomsFilter: document.getElementById('bathroomsFilter'),
   watchlistOnly: document.getElementById('watchlistOnly'),
+  sectionToggles: document.getElementById('sectionToggles'),
+  statsSection: document.getElementById('statsSection'),
+  chartsSection: document.getElementById('chartsSection'),
+  mapSection: document.getElementById('mapSection'),
+  listingsSection: document.getElementById('listingsSection'),
+  changesSection: document.getElementById('changesSection'),
   statActive: document.getElementById('statActive'),
   statNew: document.getElementById('statNew'),
   statChanged: document.getElementById('statChanged'),
@@ -67,6 +83,119 @@ function loadGeocodeCache() {
 
 function saveGeocodeCache() {
   localStorage.setItem('dashboard.geocodeCache', JSON.stringify(state.geocodeCache));
+}
+
+function loadSectionVisibility() {
+  try {
+    const raw = localStorage.getItem('dashboard.sectionVisibility');
+    const parsed = raw ? JSON.parse(raw) : {};
+    const visibility = { ...SECTION_VISIBILITY_DEFAULTS };
+
+    if (parsed && typeof parsed === 'object') {
+      for (const key of Object.keys(SECTION_VISIBILITY_DEFAULTS)) {
+        if (typeof parsed[key] === 'boolean') {
+          visibility[key] = parsed[key];
+        }
+      }
+    }
+
+    return visibility;
+  } catch {
+    return { ...SECTION_VISIBILITY_DEFAULTS };
+  }
+}
+
+function saveSectionVisibility() {
+  localStorage.setItem('dashboard.sectionVisibility', JSON.stringify(state.sectionVisibility));
+}
+
+function getSectionConfigs() {
+  return [
+    {
+      key: 'stats',
+      label: 'Stats',
+      element: elements.statsSection,
+    },
+    {
+      key: 'charts',
+      label: 'Charts',
+      element: elements.chartsSection,
+    },
+    {
+      key: 'map',
+      label: 'Map',
+      element: elements.mapSection,
+    },
+    {
+      key: 'listings',
+      label: 'Listings',
+      element: elements.listingsSection,
+    },
+    {
+      key: 'activity',
+      label: 'Activity',
+      element: elements.changesSection,
+    },
+  ];
+}
+
+function applySectionVisibility() {
+  for (const config of getSectionConfigs()) {
+    if (!config.element) {
+      continue;
+    }
+
+    const isVisible = state.sectionVisibility[config.key] !== false;
+    config.element.classList.toggle('hidden', !isVisible);
+  }
+
+  if (state.map && state.sectionVisibility.map !== false) {
+    requestAnimationFrame(() => {
+      state.map.invalidateSize();
+    });
+  }
+}
+
+function renderSectionToggleControls() {
+  if (!elements.sectionToggles) {
+    return;
+  }
+
+  elements.sectionToggles.innerHTML = '';
+
+  for (const config of getSectionConfigs()) {
+    const isVisible = state.sectionVisibility[config.key] !== false;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = [
+      'px-3',
+      'py-1.5',
+      'text-xs',
+      'font-semibold',
+      'tracking-wide',
+      'rounded-lg',
+      'border',
+      'transition-all',
+      'duration-150',
+      isVisible
+        ? 'bg-primary/20 text-primary border-primary/50 hover:bg-primary/30'
+        : 'bg-surface-container-high text-zinc-300 border-white/10 hover:border-white/20',
+    ].join(' ');
+    button.textContent = config.label;
+
+    button.addEventListener('click', () => {
+      state.sectionVisibility[config.key] = !isVisible;
+      saveSectionVisibility();
+      renderSectionToggleControls();
+      applySectionVisibility();
+
+      refreshAll().catch((error) => {
+        console.error(error);
+      });
+    });
+
+    elements.sectionToggles.appendChild(button);
+  }
 }
 
 function listingKey(item) {
@@ -398,6 +527,7 @@ function renderHistogramSummary(bins) {
 }
 
 function renderSummary(summary) {
+  state.summary = summary;
   elements.statActive.textContent = String(summary.totalActive ?? '-');
   elements.statNew.textContent = String(summary.latestRunChanges?.new ?? 0);
 
@@ -436,7 +566,7 @@ function renderChangeLog(items) {
     else if (item.changeType === "attributes_changed") liBorderClass = "border-yellow-500";
     else if (item.changeType === "removed") liBorderClass = "border-error";
 
-    li.className = `flex flex-col gap-1 p-4 rounded-lg bg-zinc-900/30 items-start border-l-2 mb-4 shadow-[0_2px_10px_rgba(0,0,0,0.2)] ${liBorderClass}`;
+    li.className = `flex flex-col gap-1 p-3 sm:p-4 rounded-lg bg-zinc-900/30 items-start border-l-2 mb-4 shadow-[0_2px_10px_rgba(0,0,0,0.2)] ${liBorderClass}`;
 
     const title = item.title || item.listingId;
     const link = item.detailUrl ? `<a href="${item.detailUrl}" target="_blank" rel="noreferrer" class="text-primary hover:underline font-bold">open listing</a>` : 'no url';
@@ -456,7 +586,7 @@ function renderListingsTable(items) {
   elements.listingsBody.innerHTML = '';
 
   if (!items.length) {
-    elements.listingsBody.innerHTML = '<tr><td colspan="11">No listings match these filters.</td></tr>';
+    elements.listingsBody.innerHTML = '<tr><td class="px-4 sm:px-6 py-4 text-sm text-zinc-400" colspan="11">No listings match these filters.</td></tr>';
     return;
   }
 
@@ -467,20 +597,20 @@ function renderListingsTable(items) {
 
     row.className = "hover:bg-white/5 transition-colors group";
     row.innerHTML = `
-      <td class="px-6 py-4 items-center justify-start text-sm text-zinc-400">
+      <td data-label="Watch" class="px-4 sm:px-6 py-2.5 sm:py-4 items-center justify-start text-sm text-zinc-400">
         <button type="button" class="text-lg focus:outline-none transition-colors ${isWatched ? 'text-yellow-400' : 'text-zinc-600 hover:text-yellow-400'}" data-watch-key="${key}" title="Toggle watchlist">${isWatched ? '★' : '☆'}</button>
       </td>
-      <td class="px-6 py-4 text-sm text-zinc-400 font-semibold">${formatSiteName(item.siteId)}</td>
-      <td class="px-6 py-4 text-sm text-zinc-400 font-semibold">${item.title || '-'}</td>
-      <td class="px-6 py-4 text-sm text-zinc-400">${item.location || '-'}</td>
-      <td class="px-6 py-4 text-right font-manrope text-on-surface font-bold text-sm">${euro(item.priceNum)}</td>
-      <td class="px-6 py-4 text-sm text-zinc-400">${item.size || '-'}</td>
-      <td class="px-6 py-4 text-sm text-zinc-400">${item.bedrooms == null ? '-' : item.bedrooms}</td>
-      <td class="px-6 py-4 text-sm text-zinc-400">${item.bathrooms == null ? '-' : item.bathrooms}</td>
-      <td class="px-6 py-4 text-sm text-zinc-400">${formatDate(item.firstSeen)}</td>
-      <td class="px-6 py-4 text-sm text-zinc-400"><canvas class="sparkline bg-transparent" id="spark_${index}" width="100" height="30"></canvas></td>
-      <td class="px-6 py-4 text-sm text-zinc-400">
-        ${item.detailUrl ? `<a href="${item.detailUrl}" target="_blank" rel="noreferrer" class="bg-surface-container-highest px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-primary hover:text-on-primary transition-all inline-block text-center border border-white/5 text-on-surface">View</a>` : '-'}
+      <td data-label="Site" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400 font-semibold">${formatSiteName(item.siteId)}</td>
+      <td data-label="Title" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-300 font-semibold"><span class="mobile-cell-value">${item.title || '-'}</span></td>
+      <td data-label="Location" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400"><span class="mobile-cell-value">${item.location || '-'}</span></td>
+      <td data-label="Price" class="px-4 sm:px-6 py-2.5 sm:py-4 text-left sm:text-right font-manrope text-on-surface font-bold text-sm">${euro(item.priceNum)}</td>
+      <td data-label="Size" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400">${item.size || '-'}</td>
+      <td data-label="Beds" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400">${item.bedrooms == null ? '-' : item.bedrooms}</td>
+      <td data-label="Baths" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400">${item.bathrooms == null ? '-' : item.bathrooms}</td>
+      <td data-label="First Seen" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400">${formatDate(item.firstSeen)}</td>
+      <td data-label="Price Trend" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400"><canvas class="sparkline bg-transparent" id="spark_${index}" width="100" height="30"></canvas></td>
+      <td data-label="Detail" class="px-4 sm:px-6 py-2.5 sm:py-4 text-sm text-zinc-400">
+        ${item.detailUrl ? `<a href="${item.detailUrl}" target="_blank" rel="noreferrer" class="bg-surface-container-highest px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-primary hover:text-on-primary transition-all inline-block text-center border border-white/5 text-on-surface w-full sm:w-auto">View</a>` : '-'}
       </td>
     `;
 
@@ -505,6 +635,33 @@ function renderListingsTable(items) {
       refreshListingsOnly();
     });
   }
+}
+
+function redrawVisualSections() {
+  if (state.summary && (state.sectionVisibility.stats !== false || state.sectionVisibility.charts !== false)) {
+    drawLineChart(elements.avgChart, state.summary.avgPriceTimeline || []);
+    const bins = state.summary.priceHistogram || [];
+    drawHistogram(elements.histChart, bins);
+    renderHistogramSummary(bins);
+  }
+
+  if (state.map && state.sectionVisibility.map !== false) {
+    state.map.invalidateSize();
+  }
+}
+
+function bindResponsiveRedraw() {
+  let resizeTimer = null;
+
+  window.addEventListener('resize', () => {
+    if (resizeTimer) {
+      clearTimeout(resizeTimer);
+    }
+
+    resizeTimer = setTimeout(() => {
+      redrawVisualSections();
+    }, 120);
+  });
 }
 
 function drawSparkline(canvas, series) {
@@ -616,6 +773,10 @@ async function geocode(location) {
 }
 
 async function renderMap(items) {
+  if (state.sectionVisibility.map === false) {
+    return;
+  }
+
   initMapIfNeeded();
   if (!state.map || !state.markerLayer) {
     return;
@@ -674,6 +835,10 @@ function getFilteredWatchlistItems(items) {
 }
 
 async function loadSummary() {
+  if (state.sectionVisibility.stats === false && state.sectionVisibility.charts === false) {
+    return;
+  }
+
   const params = new URLSearchParams();
   appendActiveFilters(params);
   const summary = await fetchJson(`/api/summary?${params.toString()}`);
@@ -681,6 +846,10 @@ async function loadSummary() {
 }
 
 async function loadChanges() {
+  if (state.sectionVisibility.activity === false) {
+    return;
+  }
+
   const params = new URLSearchParams();
   appendActiveFilters(params);
   params.set('limit', '160');
@@ -699,11 +868,17 @@ async function refreshListingsOnly() {
 
 async function refreshAll() {
   elements.lastRefreshLabel.textContent = 'Refreshing...';
-  await Promise.all([
-    loadSummary(),
-    loadChanges(),
-    refreshListingsOnly(),
-  ]);
+  const tasks = [refreshListingsOnly()];
+
+  if (state.sectionVisibility.stats !== false || state.sectionVisibility.charts !== false) {
+    tasks.push(loadSummary());
+  }
+
+  if (state.sectionVisibility.activity !== false) {
+    tasks.push(loadChanges());
+  }
+
+  await Promise.all(tasks);
   elements.lastRefreshLabel.textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
 }
 
@@ -802,6 +977,9 @@ function populateCountSelect(selectElement, values) {
 async function boot() {
   bindSortHeaders();
   bindFilters();
+  bindResponsiveRedraw();
+  renderSectionToggleControls();
+  applySectionVisibility();
 
   elements.refreshButton.addEventListener('click', () => {
     refreshAll().catch((error) => {

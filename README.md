@@ -1,8 +1,10 @@
 # Real Estate Scraping Project 
 
 - Student: Haritz Eizagirre
+- Domain: [gaise.haritzeizagirre.eus](https://gaise.haritzeizagirre.eus)
 
-## 1) What I built:
+
+## What I built:
 
 - A multi-site real-estate monitoring pipeline with an adapter architecture.
 - Automated scraping with Playwright for multiple agencies.
@@ -12,24 +14,8 @@
 - A read-only dashboard web app with filters, stats, charts, change feed and map.
 - Production deployment with HTTPS and automated background execution.
 
-## 2) Domain Name / IP
 
-- Live dashboard domain: https://gaise.haritzeizagirre.eus
-- Public server IP: [FILL IN IF TEACHER REQUESTS IP EXPLICITLY]
-- Local fallback URL: http://localhost:3000
-
-## 3) Milestones Completed
-
-I developed the project incrementally in milestone branches. Current branch list includes:
-
-- milestone1
-- milestone2
-- milestone3 (remote)
-- milestone4
-- milestone5
-- milestone6
-
-Milestone status summary:
+## Milestones Completed
 
 | Milestone | Status | What was implemented |
 |---|---|---|
@@ -47,7 +33,8 @@ Milestone status summary:
 
 *Even though the deployment lab describes Azure, I deployed successfully on AWS VM with equivalent production components (Nginx, HTTPS, system service, scheduled scraping) due to Azure's lack of B1s machines.
 
-## 4) Adapter Implementations (Required Explanation)
+
+## Adapter Implementations 
 
 The project uses one adapter per website, all following the same contract:
 
@@ -72,7 +59,7 @@ Common adapter behavior:
 - Detail-page enrichment to complete reference, description, transaction type, size, bedrooms, bathrooms, garages, and image URL.
 - Deduplication by listing id before storing results.
 
-## 5) Dashboard and Feature Screenshots
+## Dashboard and Feature Screenshots
 
 ### Dashboard (live domain)
 
@@ -81,25 +68,28 @@ Common adapter behavior:
 ![Dashboard screenshot 3](screenshots/screenshots3.png)
 ![Dashboard screenshot 4](screenshots/screenshots4.png)
 
-### Telegram Bot Alerts (optional milestone)
+### Telegram Bot Alerts 
 
 
 ![Telegram screenshot 1](screenshots/screenshot_tg1.jpg)
 ![Telegram screenshot 2](screenshots/screenshot_tg2.jpg)
 
 
-## 6) Problems Encountered
+## Problems Encountered
 
 - Azure VM provisioning issue (region constraints), so deployment was moved to AWS.
 - AI tooling (Qwen Code) instability on VM during setup, requiring manual completion of deployment steps.
 - Real-estate sites have inconsistent HTML structures, so adapters needed robust fallback selectors and normalization logic.
+- Turso access issue: some scraped price values were malformed and generated `price_num` integers larger than JavaScript's safe numeric range. This caused Turso to fail with: "Received integer which is too large to be safely represented as a JavaScript number". I fixed it by cleaning the corrupted rows in Turso and hardening the normalization logic to reject unrealistic values and parse only valid price tokens.
 
 
-## 7) Additional Comments
+## Additional Comments
 
 - It was so difficult to make an adapter to scrap all the info correctly on some websites especially in data such as the number of bedrooms or bathrooms due to the inconsistency of the data in those websites.
+- I improved the dashboard website's UI using Stitch MCP on Antigravity and also 
+making it responsive so that it can be used on devices such as mobile phones.
 
-## 8) Deployment Architecture
+## Deployment Architecture
 
 Production setup:
 
@@ -110,7 +100,7 @@ Production setup:
 - Turso for cloud SQL persistence
 - systemd and/or cron for automated execution
 
-## 9) Quick Commands
+## Quick Commands
 
 ```bash
 # Scrape one site and print JSON
@@ -123,21 +113,8 @@ node scrape.js --site iparralde --persist
 node scrape.js --once
 
 # Start periodic scheduler
-node scrape.js --schedule "*/30 * * * *"
+node scrape.js --schedule "0 * * * *"
 
 # Start dashboard
 node dashboard.js --port 3000
 ```
-
-## 10) Final Checklist for Teacher Review
-
-- [x] Who I am and what I did
-- [x] Milestones completed
-- [x] Domain name / IP section
-- [x] Problems encountered
-- [x] Additional comments
-- [x] Dashboard screenshots
-- [x] Adapter implementation explanation
-- [ ] Telegram alert screenshot (pending file if required)
-- [ ] Extra localhost screenshots (optional)
-

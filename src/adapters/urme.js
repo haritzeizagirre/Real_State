@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { chromium } = require('playwright');
 
 const DEFAULT_START_URLS = {
-  sale: 'https://www.urme.es/inmuebles/listado_de_inmuebles/compra/piso',
+  sale: 'https://www.urme.es/inmuebles/listado_de_inmuebles/compra',
   rent: 'https://www.urme.es/inmuebles/listado_de_inmuebles/alquiler',
 };
 

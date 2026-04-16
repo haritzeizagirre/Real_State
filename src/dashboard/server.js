@@ -3,6 +3,7 @@ const express = require('express');
 
 const PRICE_NUM_MIN = 1000;
 const PRICE_NUM_MAX = 5000000;
+const MAX_REASONABLE_PRICE_NUM = 50000000;
 
 function readConfig(options = {}) {
   const url = options.dbUrl || process.env.TURSO_DB || process.env.TURSO_DATABASE_URL;
@@ -90,7 +91,7 @@ function normalizePriceNumber(rawPriceNum) {
   }
 
   const rounded = Math.round(direct);
-  if (rounded <= 0 || rounded > 50000000) {
+  if (rounded <= 0 || rounded > MAX_REASONABLE_PRICE_NUM) {
     return null;
   }
 
@@ -98,7 +99,21 @@ function normalizePriceNumber(rawPriceNum) {
 }
 
 function isUsablePriceNumber(value) {
-  return Number.isFinite(value) && value > 0 && value <= 50000000;
+  return Number.isFinite(value) && value > 0 && value <= MAX_REASONABLE_PRICE_NUM;
+}
+
+async function sanitizeUnsafePriceNumbers(client) {
+  for (const tableName of ['listings_current', 'listings_snapshot']) {
+    await client.execute({
+      sql: `
+        UPDATE ${tableName}
+        SET price_num = NULL
+        WHERE price_num IS NOT NULL
+          AND (price_num <= 0 OR price_num > ?)
+      `,
+      args: [MAX_REASONABLE_PRICE_NUM],
+    });
+  }
 }
 
 function inferTransactionType(source) {
@@ -395,6 +410,13 @@ async function startDashboardServer(options = {}) {
   const config = readConfig(options);
   const client = createClient(config);
   const app = express();
+
+  try {
+    await sanitizeUnsafePriceNumbers(client);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`Dashboard startup cleanup skipped: ${detail}`);
+  }
 
   const port = Number(options.port) || 3000;
   const host = options.host || '0.0.0.0';

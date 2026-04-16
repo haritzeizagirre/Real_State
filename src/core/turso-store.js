@@ -4,6 +4,8 @@ const {
   detectChanges,
 } = require('./monitoring');
 
+const MAX_REASONABLE_PRICE_NUM = 50000000;
+
 /** @typedef {import('./types').PersistRunParams} PersistRunParams */
 /** @typedef {import('./types').PersistRunReport} PersistRunReport */
 
@@ -44,6 +46,24 @@ function readRowField(row, key, index, fallback = null) {
     return row[index];
   }
   return fallback;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {number | null}
+ */
+function sanitizePriceNumForStorage(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  const rounded = Math.round(parsed);
+  if (!Number.isSafeInteger(rounded) || rounded <= 0 || rounded > MAX_REASONABLE_PRICE_NUM) {
+    return null;
+  }
+
+  return rounded;
 }
 
 /**
@@ -218,6 +238,19 @@ async function ensureSchema(client) {
     { name: 'imageUrl', definition: 'imageUrl TEXT' },
   ]);
 
+  // Defensively clear legacy malformed values that can break JS integer decoding.
+  for (const tableName of ['listings_current', 'listings_snapshot']) {
+    await client.execute({
+      sql: `
+        UPDATE ${tableName}
+        SET price_num = NULL
+        WHERE price_num IS NOT NULL
+          AND (price_num <= 0 OR price_num > ?)
+      `,
+      args: [MAX_REASONABLE_PRICE_NUM],
+    });
+  }
+
   await client.execute('CREATE INDEX IF NOT EXISTS idx_scrape_runs_site ON scrape_runs(siteId, run_id DESC)');
   await client.execute('CREATE INDEX IF NOT EXISTS idx_listings_current_site_active ON listings_current(siteId, is_active, miss_count DESC)');
   await client.execute('CREATE INDEX IF NOT EXISTS idx_listings_snapshot_site_run ON listings_snapshot(siteId, run_id DESC)');
@@ -371,7 +404,7 @@ async function createListingsStore(options = {}) {
           row.title,
           row.location,
           row.price,
-          row.priceNum,
+          sanitizePriceNumForStorage(row.priceNum),
           row.detailUrl,
           row.reference,
           row.description,
@@ -445,7 +478,7 @@ async function createListingsStore(options = {}) {
           row.location,
           row.locationNorm,
           row.price,
-          row.priceNum,
+          sanitizePriceNumForStorage(row.priceNum),
           row.detailUrl,
           row.reference,
           row.description,

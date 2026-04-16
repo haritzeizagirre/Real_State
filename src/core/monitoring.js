@@ -1,4 +1,5 @@
 const DEFAULT_MAX_MISS_COUNT = 3;
+const MAX_REASONABLE_PRICE_NUM = 50000000;
 
 /** @typedef {import('./types').Listing} Listing */
 /** @typedef {import('./types').NormalizedListing} NormalizedListing */
@@ -62,13 +63,18 @@ function normalizePriceNumber(rawPrice) {
     return null;
   }
 
-  // Keep only numeric/separator characters and then normalize locale variants.
-  const compact = source.replace(/\s+/g, '').replace(/[^\d,.-]/g, '');
-  if (!compact) {
+  const candidates = source.match(/\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{1,2})?|\d{4,}/g);
+  if (!candidates || candidates.length === 0) {
     return null;
   }
 
-  let normalized = compact;
+  // If a string accidentally contains multiple amounts, prefer the last one.
+  const token = candidates[candidates.length - 1];
+  if (!token) {
+    return null;
+  }
+
+  let normalized = token;
   const hasComma = normalized.includes(',');
   const hasDot = normalized.includes('.');
 
@@ -93,7 +99,12 @@ function normalizePriceNumber(rawPrice) {
     return null;
   }
 
-  return Math.round(value);
+  const rounded = Math.round(value);
+  if (rounded <= 0 || rounded > MAX_REASONABLE_PRICE_NUM) {
+    return null;
+  }
+
+  return rounded;
 }
 
 /**

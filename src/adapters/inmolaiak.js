@@ -1,7 +1,10 @@
 const crypto = require('crypto');
 const { chromium } = require('playwright');
 
-const DEFAULT_START_URL = 'https://www.inmolaiak.com/find/?buy_op=selling';
+const DEFAULT_START_URLS = [
+  'https://www.inmolaiak.com/find/?buy_op=selling',
+  'https://www.inmolaiak.com/find/?buy_op=renting',
+];
 
 function clean(text) {
   return (text || '').replace(/\s+/g, ' ').trim();
@@ -80,6 +83,38 @@ function needsDetailEnrichment(listing) {
     || listing.bathrooms === null
     || listing.garages === null
     || !listing.imageUrl;
+}
+
+function normalizeRequestedTransactionType(value) {
+  const normalized = clean(value).toLowerCase();
+  if (['rent', 'rental', 'alquiler', 'renting'].includes(normalized)) {
+    return 'rent';
+  }
+  if (['sale', 'venta', 'selling'].includes(normalized)) {
+    return 'sale';
+  }
+  return 'both';
+}
+
+function resolveStartUrls(params = {}) {
+  if (Array.isArray(params.startUrls) && params.startUrls.length > 0) {
+    return params.startUrls.map((url) => clean(url)).filter(Boolean);
+  }
+
+  if (params.startUrl) {
+    const single = clean(params.startUrl);
+    return single ? [single] : [...DEFAULT_START_URLS];
+  }
+
+  const requested = normalizeRequestedTransactionType(params.transactionType);
+  if (requested === 'sale') {
+    return [DEFAULT_START_URLS[0]];
+  }
+  if (requested === 'rent') {
+    return [DEFAULT_START_URLS[1]];
+  }
+
+  return [...DEFAULT_START_URLS];
 }
 
 async function acceptCookiesIfVisible(page) {
@@ -385,10 +420,10 @@ const inmolaiakAdapter = {
   siteId: 'inmolaiak',
 
   /**
-   * @param {{startUrl?: string, maxPages?: number, headless?: boolean}} params
+   * @param {{startUrl?: string, startUrls?: string[], transactionType?: 'sale'|'rent'|'both', maxPages?: number, headless?: boolean}} params
    */
   async list(params = {}) {
-    const startUrl = clean(params.startUrl || DEFAULT_START_URL);
+    const startUrls = resolveStartUrls(params);
     const maxPages = Number.isFinite(Number(params.maxPages)) ? Number(params.maxPages) : 12;
     const detailEnrichment = params.detailEnrichment !== false;
     const maxDetailListings = Number.isFinite(Number(params.maxDetailListings)) ? Math.max(0, Number(params.maxDetailListings)) : 60;
@@ -399,46 +434,54 @@ const inmolaiakAdapter = {
     const page = await context.newPage();
 
     try {
-      await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(2200);
-      await acceptCookiesIfVisible(page);
-
-      await page.waitForFunction(() => document.querySelectorAll('a.house-web-block[href*="/house/"]').length > 0, null, {
-        timeout: 20000,
-      });
-
       const scrapingTimestamp = new Date().toISOString();
       const byId = new Map();
-      const pageSignatures = new Set();
-      let pageIndex = 1;
 
-      while (pageIndex <= maxPages) {
-        const pageItems = await scrapeVisiblePageListings(page, scrapingTimestamp);
-        const signature = pageItems.slice(0, 5).map((item) => item.detailUrl).join('|');
-        if (signature && pageSignatures.has(signature)) {
-          break;
-        }
-        if (signature) {
-          pageSignatures.add(signature);
+      for (const startUrl of startUrls) {
+        await page.goto(startUrl, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(2200);
+        await acceptCookiesIfVisible(page);
+
+        try {
+          await page.waitForFunction(() => document.querySelectorAll('a.house-web-block[href*="/house/"]').length > 0, null, {
+            timeout: 20000,
+          });
+        } catch {
+          // Continue to the next feed URL when a feed has no listings.
+          continue;
         }
 
-        for (const item of pageItems) {
-          const id = deriveStableId(item.detailUrl);
-          if (!byId.has(id)) {
-            byId.set(id, {
-              id,
-              ...item,
-              siteId: this.siteId,
-            });
+        const pageSignatures = new Set();
+        let pageIndex = 1;
+
+        while (pageIndex <= maxPages) {
+          const pageItems = await scrapeVisiblePageListings(page, scrapingTimestamp);
+          const signature = pageItems.slice(0, 5).map((item) => item.detailUrl).join('|');
+          if (signature && pageSignatures.has(signature)) {
+            break;
           }
-        }
+          if (signature) {
+            pageSignatures.add(signature);
+          }
 
-        const moved = await goToNextPaginationPage(page);
-        if (!moved) {
-          break;
-        }
+          for (const item of pageItems) {
+            const id = deriveStableId(item.detailUrl);
+            if (!byId.has(id)) {
+              byId.set(id, {
+                id,
+                ...item,
+                siteId: this.siteId,
+              });
+            }
+          }
 
-        pageIndex += 1;
+          const moved = await goToNextPaginationPage(page);
+          if (!moved) {
+            break;
+          }
+
+          pageIndex += 1;
+        }
       }
 
       if (detailEnrichment && byId.size > 0) {
