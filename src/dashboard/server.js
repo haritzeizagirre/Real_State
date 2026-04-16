@@ -400,8 +400,36 @@ async function startDashboardServer(options = {}) {
   const host = options.host || '0.0.0.0';
   const publicDir = path.join(__dirname, 'public');
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', backend: 'turso', url: config.url });
+  function buildApiErrorPayload(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const normalized = message.toLowerCase();
+
+    let hint = '';
+    if (normalized.includes('status: 404') || normalized.includes('404')) {
+      hint = 'Turso endpoint not found. Verify TURSO_DB/TURSO_DATABASE_URL points to an existing libsql:// database.';
+    } else if (normalized.includes('status: 401') || normalized.includes('status: 403') || normalized.includes('unauthorized') || normalized.includes('forbidden')) {
+      hint = 'Turso auth failed. Verify TURSO_TOKEN/TURSO_AUTH_TOKEN is valid and has read access.';
+    }
+
+    return {
+      error: message,
+      ...(hint ? { hint } : {}),
+    };
+  }
+
+  app.get('/api/health', async (_req, res) => {
+    try {
+      await client.execute('SELECT 1 AS ok');
+      res.json({ status: 'ok', backend: 'turso', url: config.url, db: 'reachable' });
+    } catch (error) {
+      res.status(503).json({
+        status: 'degraded',
+        backend: 'turso',
+        url: config.url,
+        db: 'unreachable',
+        ...buildApiErrorPayload(error),
+      });
+    }
   });
 
   app.get('/api/options', async (_req, res) => {
@@ -456,7 +484,7 @@ async function startDashboardServer(options = {}) {
         transactionTypes: ['sale', 'rent', 'unknown'],
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json(buildApiErrorPayload(error));
     }
   });
 
@@ -525,7 +553,7 @@ async function startDashboardServer(options = {}) {
         items,
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json(buildApiErrorPayload(error));
     }
   });
 
@@ -608,7 +636,7 @@ async function startDashboardServer(options = {}) {
 
       res.json({ count: items.length, items });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json(buildApiErrorPayload(error));
     }
   });
 
@@ -829,7 +857,7 @@ async function startDashboardServer(options = {}) {
         priceHistogram: computeHistogram(activePrices),
       });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json(buildApiErrorPayload(error));
     }
   });
 
@@ -876,7 +904,7 @@ async function startDashboardServer(options = {}) {
 
       res.json({ histories });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json(buildApiErrorPayload(error));
     }
   });
 

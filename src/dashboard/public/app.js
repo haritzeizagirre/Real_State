@@ -812,10 +812,16 @@ async function boot() {
 
   try {
     await loadOptions();
+  } catch (error) {
+    console.error('Failed to load /api/options. Continuing with default filters.', error);
+    elements.lastRefreshLabel.textContent = 'Filters unavailable; loading data...';
+  }
+
+  try {
     await refreshAll();
   } catch (error) {
     console.error(error);
-    alert(`Dashboard failed to load: ${error.message}`);
+    alert(`Dashboard failed to load data: ${error.message}`);
   }
 }
 
